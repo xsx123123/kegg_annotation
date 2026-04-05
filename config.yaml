@@ -1,0 +1,26 @@
+# =============================================================================
+# KEGG Annotation Pipeline - Configuration Template
+# =============================================================================
+# Copy and modify this file for your analysis
+# Usage: snakemake --use-conda --config analysisyaml=/path/to/your/config.yaml
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Sample Configuration
+# -----------------------------------------------------------------------------
+samples:
+  - test_sample_100
+
+# -----------------------------------------------------------------------------
+# Workflow Paths
+# -----------------------------------------------------------------------------
+# workflow: Path to working directory for analysis outputs
+#           Set this to separate analysis data from pipeline code
+workflow: /home/zj/temp/kegg_annotation
+
+# input_dir: Directory containing input protein sequences
+input_dir: "/home/zj/temp/kegg_annotation/"
+
+# output_dir: Directory for annotation results
+output_dir: "/home/zj/temp/kegg_annotation/results"
+
