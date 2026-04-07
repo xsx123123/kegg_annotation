@@ -92,6 +92,16 @@ workdir: workflow_dir
 
 
 # =============================================================================
+# Resolve Database Paths
+# =============================================================================
+# Convert relative database paths to absolute paths based on dataset_dir
+
+from rules.utils import resolve_db_paths
+
+resolve_db_paths(config)
+
+
+# =============================================================================
 # Import Sub-rules
 # =============================================================================
 

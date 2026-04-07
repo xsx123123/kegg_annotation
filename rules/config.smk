@@ -33,6 +33,27 @@ KOFAM_PROFILES = config.get("kofam_profiles", "dataset/kegg_2026-02-01_ko_datase
 KOFAM_CPU = config.get("kofam_cpu", 8)
 
 # -----------------------------------------------------------------------------
+# 脚本路径配置
+# -----------------------------------------------------------------------------
+# 使用 workflow.source_path 将相对路径转换为绝对路径
+# 注意：这里假设 config 中的路径是相对于 pipeline 根目录的
+_scripts = config.get("scripts", {})
+
+# 辅助函数：解析脚本路径
+def _resolve_script_path(script_path):
+    """将脚本路径解析为绝对路径"""
+    if not script_path:
+        return None
+    if os.path.isabs(script_path):
+        return script_path
+    # 相对于工作目录（snakefile 所在目录）
+    return os.path.join(workflow.basedir, script_path)
+
+EGGNOG_PROCESSOR = _resolve_script_path(_scripts.get("eggnog_processor", "scripts/eggnog_processor.py"))
+KOFAMSCAN_PROCESSOR = _resolve_script_path(_scripts.get("KofamScan_processor", "scripts/KofamScan_processor.py"))
+MERGE_RESULTS = _resolve_script_path(_scripts.get("merge_results", "scripts/merge_results.py"))
+
+# -----------------------------------------------------------------------------
 # 过滤阈值配置
 # -----------------------------------------------------------------------------
 EVALUE_THRESHOLD = config.get("evalue_threshold", 1e-5)

@@ -13,7 +13,7 @@ rule merge_eggnog_results:
         high_conf = "merged/eggnog_highconf.tsv",
         stats = "merged/eggnog_stats.txt"
     params:
-        samples = " ".join(SAMPLES)
+        samples = " ".join(SAMPLES),
     conda:
         workflow.source_path("../env/python3.yaml")
     resources:
@@ -27,8 +27,8 @@ rule merge_eggnog_results:
     shell:
         """
         mkdir -p merged
-        
-        python3 scripts/merge_results.py \
+        chmod +x "{MERGE_RESULTS}" && \
+        python3 "{MERGE_RESULTS}" \
             --input-dir . \
             --samples {params.samples} \
             --tool eggnog \
@@ -49,7 +49,7 @@ rule merge_kofam_results:
         high_conf = "merged/kofam_highconf.tsv",
         stats = "merged/kofam_stats.txt"
     params:
-        samples = " ".join(SAMPLES)
+        samples = " ".join(SAMPLES),
     conda:
         workflow.source_path("../env/python3.yaml")
     resources:
@@ -63,8 +63,8 @@ rule merge_kofam_results:
     shell:
         """
         mkdir -p merged
-        
-        python3 scripts/merge_results.py \
+        chmod +x "{MERGE_RESULTS}" && \
+        python3 "{MERGE_RESULTS}" \
             --input-dir . \
             --samples {params.samples} \
             --tool kofam \

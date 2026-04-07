@@ -55,14 +55,14 @@ rule eggnog_processor:
         high_conf = "{sample}/{sample}_eggnog_highconf.tsv",
         report = "{sample}/{sample}_eggnog_report.txt"
     conda:
-        workflow.source_path("../env/eggnog-mapper.yaml")
+        workflow.source_path("../env/python3.yaml")
     params:
         output_prefix = "{sample}/{sample}_eggnog",
         evalue = EVALUE_THRESHOLD,
         bitscore = BITSCORE_THRESHOLD,
         min_confidence = MIN_CONFIDENCE,
         require_kegg = "--require-kegg" if REQUIRE_KEGG else "",
-        require_go = "--require-go" if REQUIRE_GO else ""
+        require_go = "--require-go" if REQUIRE_GO else "",
     resources:
         **rule_resource(config, 'default', skip_queue_on_local=True, logger=logger)
     log:
@@ -73,7 +73,8 @@ rule eggnog_processor:
         "🔬 Processing eggnog for {wildcards.sample}"
     shell:
         """
-        python3 scripts/eggnog_processor.py \
+        chmod +x "{EGGNOG_PROCESSOR}" && \
+        python3 "{EGGNOG_PROCESSOR}" \
             -i {input.annotations} \
             -o {params.output_prefix} \
             --evalue {params.evalue} \

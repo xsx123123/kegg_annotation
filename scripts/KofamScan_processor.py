@@ -247,18 +247,53 @@ def generate_conflict_summary(df, eggnog_file=None):
     # 如果提供 eggnog 文件，进行对比
     if eggnog_file and Path(eggnog_file).exists():
         logger.info(f"与 eggNOG 结果进行对比: {eggnog_file}")
-        eggnog = pd.read_csv(eggnog_file, sep='\t', skiprows=4)
-        comparison = compare_with_eggnog(df, eggnog)
-        summary['comparison'] = comparison
+        try:
+            # eggnog 文件有 4 行注释，第 5 行是列名（以 # 开头）
+            eggnog = pd.read_csv(eggnog_file, sep='\t', skiprows=4, comment='#')
+            # 如果没有正确读取列名，尝试重新读取
+            if eggnog.empty or 'query' not in eggnog.columns.str.lstrip('#').tolist():
+                eggnog = pd.read_csv(eggnog_file, sep='\t', skiprows=3)
+                # 去除列名的 # 前缀
+                eggnog.columns = [col.lstrip('#') for col in eggnog.columns]
+            comparison = compare_with_eggnog(df, eggnog)
+            summary['comparison'] = comparison
+        except Exception as e:
+            logger.warning(f"读取 eggnog 文件失败: {e}")
     
     return summary
 
 
 def compare_with_eggnog(kofam_df, eggnog_df):
     """与 eggNOG 结果对比"""
-    # 标准化列名
-    eggnog_subset = eggnog_df[['query', 'KEGG_ko']].copy()
-    eggnog_subset['KEGG_ko_clean'] = eggnog_subset['KEGG_ko'].str.replace('ko:', '', na='')
+    # 标准化列名（去除可能的 # 前缀，统一大小写）
+    eggnog_df = eggnog_df.rename(columns=lambda x: x.lstrip('#').lower())
+    
+    # 检查必需的列是否存在
+    if 'query' not in eggnog_df.columns:
+        logger.warning("eggnog 文件中缺少 'query' 列，跳过对比")
+        return {
+            'stats': {'error': 'Missing query column in eggnog'},
+            'conflict_df': pd.DataFrame(),
+            'merged_df': pd.DataFrame()
+        }
+    
+    # 查找 KEGG_ko 列（可能是 'kegg_ko' 或其他变体）
+    kegg_col = None
+    for col in eggnog_df.columns:
+        if 'kegg' in col and 'ko' in col:
+            kegg_col = col
+            break
+    
+    if not kegg_col:
+        logger.warning("eggnog 文件中未找到 KEGG KO 列，跳过对比")
+        return {
+            'stats': {'error': 'Missing KEGG_ko column in eggnog'},
+            'conflict_df': pd.DataFrame(),
+            'merged_df': pd.DataFrame()
+        }
+    
+    eggnog_subset = eggnog_df[['query', kegg_col]].copy()
+    eggnog_subset['KEGG_ko_clean'] = eggnog_subset[kegg_col].str.replace('ko:', '', na='')
     
     # 合并
     merged = pd.merge(
@@ -413,12 +448,12 @@ def main():
     filtered = best_df[best_df['confidence_level'].apply(lambda x: conf_rank[x] >= min_rank)]
     
     # 保存主结果
-    output_file = f"{args.output}_formatted.tsv"
+    output_file = f"{args.output}.tsv"
     eggnog_style.to_csv(output_file, sep='\t', index=False)
     logger.success(f"主结果已保存: {output_file} ({len(eggnog_style)} 条)")
     
     # 保存高质量子集
-    hq_file = f"{args.output}_high_confidence.tsv"
+    hq_file = f"{args.output}_highconf.tsv"
     high_conf_df = eggnog_style[eggnog_style['confidence_level'] == 'High']
     high_conf_df.to_csv(hq_file, sep='\t', index=False)
     logger.success(f"高置信子集已保存: {hq_file} ({len(high_conf_df)} 条)")

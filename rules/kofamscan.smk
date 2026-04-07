@@ -80,7 +80,8 @@ rule kofamscan_processor:
         "📊 Processing KofamScan for {wildcards.sample}"
     shell:
         """
-        python3 scripts/KofamScan_processor.py \
+        chmod +x "{KOFAMSCAN_PROCESSOR}" && \
+        python3 "{KOFAMSCAN_PROCESSOR}" \
             -i {input.detail} \
             -o {params.output_prefix} \
             -e {input.eggnog_annotations} \
