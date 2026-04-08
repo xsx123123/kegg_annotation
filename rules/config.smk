@@ -52,6 +52,13 @@ def _resolve_script_path(script_path):
 EGGNOG_PROCESSOR = _resolve_script_path(_scripts.get("eggnog_processor", "scripts/eggnog_processor.py"))
 KOFAMSCAN_PROCESSOR = _resolve_script_path(_scripts.get("KofamScan_processor", "scripts/KofamScan_processor.py"))
 MERGE_RESULTS = _resolve_script_path(_scripts.get("merge_results", "scripts/merge_results.py"))
+AI_CURATOR = _resolve_script_path(_scripts.get("ai_curator", "scripts/ai_curator.py"))
+
+# -----------------------------------------------------------------------------
+# AI 配置
+# -----------------------------------------------------------------------------
+AI_CONFIG = config.get("ai", {})
+AI_ENABLED = AI_CONFIG.get("enabled", False)
 
 # -----------------------------------------------------------------------------
 # 过滤阈值配置

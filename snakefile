@@ -123,6 +123,10 @@ include: "rules/report.smk"
 # Merge results rules
 include: "rules/merge.smk"
 
+# AI curator rules (optional)
+if AI_ENABLED:
+    include: "rules/ai_curator.smk"
+
 
 # =============================================================================
 # Logger Setup (Post-workdir)
@@ -189,3 +193,17 @@ rule reports:
         expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_annotation_summary.txt", sample=SAMPLES)
     message:
         "✅ Reports generated for all samples"
+
+
+rule ai_analysis:
+    """
+    Target rule for AI-powered annotation analysis.
+    
+    Requires AI to be enabled in config (ai.enabled: true).
+    Generates AI-curated reports for each sample:
+        snakemake --use-conda --config ai.enabled=true ai_analysis
+    """
+    input:
+        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_ai_report.md", sample=SAMPLES)
+    message:
+        "🤖 AI analysis complete!"
