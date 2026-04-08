@@ -387,8 +387,22 @@ def main():
     
     # 读取数据
     logger.info("读取注释结果...")
-    eggnog_df = pd.read_csv(args.eggnog, sep='\t', low_memory=False)
-    kofam_df = pd.read_csv(args.kofam, sep='\t', low_memory=False)
+    try:
+        # eggnog 文件可能有注释行（以 # 开头），需要跳过
+        eggnog_df = pd.read_csv(args.eggnog, sep='\t', low_memory=False, comment='#')
+    except pd.errors.ParserError as e:
+        logger.error(f"解析 eggnog 文件失败: {e}")
+        logger.info("尝试使用更宽松的解析方式...")
+        eggnog_df = pd.read_csv(args.eggnog, sep='\t', low_memory=False, 
+                                comment='#', on_bad_lines='skip')
+    
+    try:
+        kofam_df = pd.read_csv(args.kofam, sep='\t', low_memory=False, comment='#')
+    except pd.errors.ParserError as e:
+        logger.error(f"解析 kofam 文件失败: {e}")
+        logger.info("尝试使用更宽松的解析方式...")
+        kofam_df = pd.read_csv(args.kofam, sep='\t', low_memory=False,
+                               comment='#', on_bad_lines='skip')
     
     logger.info(f"eggnog: {len(eggnog_df)} 条, Kofam: {len(kofam_df)} 条")
     
