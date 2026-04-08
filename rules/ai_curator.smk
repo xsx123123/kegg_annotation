@@ -93,6 +93,9 @@ rule ai_multi_sample_summary:
         summary = "merged/AI_MULTI_SAMPLE_SUMMARY.md"
     params:
         samples = " ".join(SAMPLES),
+        n_samples = len(SAMPLES),
+        first_sample = SAMPLES[0] if SAMPLES else "",
+        first_report = f"{SAMPLES[0]}/{SAMPLES[0]}_ai_report.md" if SAMPLES else "",
         provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2")
     conda:
@@ -105,19 +108,19 @@ rule ai_multi_sample_summary:
         "🤖 Generating multi-sample AI summary"
     shell:
         """
-        if [ {len(SAMPLES)} -eq 1 ]; then
+        if [ {params.n_samples} -eq 1 ]; then
             # 单样本，复制报告
-            if [ -f "{input.ai_reports[0]}" ]; then
-                cp "{input.ai_reports[0]}" "{output.summary}"
+            if [ -f "{params.first_report}" ]; then
+                cp "{params.first_report}" "{output.summary}"
             else
-                echo "# AI Analysis Summary\n\nSample: {SAMPLES[0]}\n" > "{output.summary}"
+                echo "# AI Analysis Summary\n\nSample: {params.first_sample}\n" > "{output.summary}"
             fi
         else
             # 多样本，创建汇总
             cat > "{output.summary}" << 'EOF'
 # AI Multi-Sample Summary
 
-Samples analyzed: {len(SAMPLES)}
+Samples analyzed: {params.n_samples}
 Samples: {params.samples}
 
 ## Individual Reports
