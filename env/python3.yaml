@@ -216,8 +216,6 @@ dependencies:
     - uc-micro-py==1.0.3
     - url-normalize==2.2.1
     - urllib3==2.6.3
-    - variantconvert==2.0.1
-    - vcf2circos==1.2.0
     - virtualenv==20.35.4
     - wcwidth==0.2.13
     - webcolors==1.13

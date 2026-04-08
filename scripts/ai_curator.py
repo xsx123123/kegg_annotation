@@ -38,13 +38,41 @@ class AICurator:
         Args:
             provider: AI 提供商 (openai, claude, ollama)
             model: 模型名称
-            api_key: API 密钥
+            api_key: API 密钥，或环境变量名（如 ARK_API_KEY）
             api_base: API 基础 URL（用于自定义端点）
         """
         self.provider = provider.lower()
         self.model = model
-        self.api_key = api_key or os.getenv("AI_API_KEY")
-        self.api_base = api_base or os.getenv("AI_API_BASE")
+        
+        # 处理 api_key：如果看起来像环境变量名，或不是以 key 开头，尝试从环境变量读取
+        if api_key:
+            # 如果是环境变量名格式（全大写+下划线），或该值是已存在的环境变量
+            if api_key.isupper() and '_' in api_key:
+                env_value = os.getenv(api_key)
+                if env_value:
+                    self.api_key = env_value
+                    logger.debug(f"从环境变量 {api_key} 读取 API key")
+                else:
+                    logger.warning(f"环境变量 {api_key} 未设置")
+                    self.api_key = None
+            else:
+                self.api_key = api_key
+        else:
+            self.api_key = os.getenv("AI_API_KEY")
+        
+        # 处理 api_base
+        if api_base:
+            if api_base.isupper() and '_' in api_base:
+                env_value = os.getenv(api_base)
+                if env_value:
+                    self.api_base = env_value
+                    logger.debug(f"从环境变量 {api_base} 读取 API base")
+                else:
+                    self.api_base = None
+            else:
+                self.api_base = api_base
+        else:
+            self.api_base = os.getenv("AI_API_BASE")
         
         self._init_client()
     
