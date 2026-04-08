@@ -20,13 +20,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich import box
 import sys
 
-# 配置 loguru
+# loguru 配置推迟到 main() 中，根据 --log 参数决定
 logger.remove()
-logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
-logger.add("kofamscan_processor_{time}.log", rotation="10 MB", retention="1 week")
-
-# 创建 rich console
-console = Console()
 
 
 def parse_kofam_detail(file_path):
@@ -414,8 +409,19 @@ def main():
     parser.add_argument('--min-confidence', default='Low', 
                        choices=['High', 'Medium', 'Low'],
                        help='最低可信度阈值 (默认: Low，保留所有)')
+    parser.add_argument('--log', help='日志文件路径（由 Snakemake 传入）')
     
     args = parser.parse_args()
+    
+    # 配置 loguru：如果传了 --log，只写文件；否则写 stderr + 默认文件日志
+    if args.log:
+        logger.add(args.log, rotation="10 MB", retention="1 week")
+    else:
+        logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
+        logger.add("kofamscan_processor_{time}.log", rotation="10 MB", retention="1 week")
+    
+    # 创建 rich console
+    console = Console()
     
     # 启动信息
     console.print(Panel(

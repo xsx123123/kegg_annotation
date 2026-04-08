@@ -26,13 +26,8 @@ try:
     from rich.text import Text
     from rich import box
     
-    # 配置 loguru
+    # 配置 loguru（stderr 先保留，具体 handler 在 main 里根据参数决定）
     logger.remove()  # 移除默认处理器
-    logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
-    logger.add("eggnog_processor_{time}.log", rotation="10 MB", retention="1 week")
-    
-    # 创建 rich console
-    console = Console()
     HAS_RICH = True
 except ImportError:
     # 回退到标准 logging
@@ -726,6 +721,7 @@ def main():
                         help='输入的 emapper.annotations 文件路径')
     parser.add_argument('-o', '--output', required=True,
                         help='输出文件前缀')
+    parser.add_argument('--log', help='日志文件路径（由 Snakemake 传入）')
     
     # 过滤参数
     filter_group = parser.add_argument_group('过滤阈值参数')
@@ -755,6 +751,16 @@ def main():
                            help='最低可信度阈值 (默认: Low，保留所有)')
     
     args = parser.parse_args()
+    
+    # 配置 loguru：如果传了 --log，只写文件（避免与 Snakemake 的 stderr 重定向重复）
+    if args.log:
+        logger.add(args.log, rotation="10 MB", retention="1 week")
+    else:
+        logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
+        logger.add("eggnog_processor_{time}.log", rotation="10 MB", retention="1 week")
+    
+    # 创建 rich console（必须在 logger 配置之后）
+    console = Console()
     
     # 检查输入文件
     if not os.path.exists(args.input):

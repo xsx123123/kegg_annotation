@@ -82,7 +82,7 @@ rule eggnog_processor:
             --min-confidence {params.min_confidence} \
             {params.require_kegg} \
             {params.require_go} \
-            > {log} 2>&1
+            --log {log}
         
         mv {params.output_prefix}_report.txt {output.report} 2>/dev/null || true
         """
