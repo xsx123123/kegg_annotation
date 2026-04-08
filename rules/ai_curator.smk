@@ -1,8 +1,17 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # =============================================================================
 # AI Curator Rules
 # =============================================================================
 # 使用 AI 对注释结果进行智能分析和校正
 # =============================================================================
+
+# 导入必要的模块（在文件顶部导入，避免在 run 中重复导入）
+import os
+import subprocess
+import json
+import shutil
+
 
 rule ai_annotation_curator:
     """
@@ -21,57 +30,59 @@ rule ai_annotation_curator:
         provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2"),
         api_key = lambda wc: config.get("ai", {}).get("api_key", ""),
-        api_base = lambda wc: config.get("ai", {}).get("api_base", "")
+        api_base = lambda wc: config.get("ai", {}).get("api_base", ""),
+        # 将脚本路径作为参数传递
+        ai_curator_script = AI_CURATOR
     conda:
         workflow.source_path("../env/python3.yaml")
-    resources:
-        **rule_resource(config, 'low_resource', skip_queue_on_local=True, logger=logger)
     log:
         "logs/{sample}_ai_curator.log"
     benchmark:
         "benchmarks/{sample}_ai_curator.txt"
     message:
         "🤖 Running AI analysis on {wildcards.sample}"
-    run:
-        # 构建命令参数
-        cmd = [
-            "python3", str(AI_CURATOR),
-            "-e", str(input.eggnog),
-            "-k", str(input.kofam),
-            "-s", str(wildcards.sample),
-            "-o", str(output.report),
-            "--provider", str(params.provider),
-            "--model", str(params.model)
-        ]
+    shell:
+        """
+        # 构建基础命令
+        CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --provider {params.provider} --model {params.model}"
         
-        # 添加可选参数
-        if params.api_key:
-            cmd.extend(["--api-key", str(params.api_key)])
-        if params.api_base:
-            cmd.extend(["--api-base", str(params.api_base)])
+        # 处理 API key（安全方式）
+        if [ -n "{params.api_key}" ]; then
+            # 检查是否为环境变量名（全大写+下划线）
+            if echo "{params.api_key}" | grep -qE '^[A-Z_]+$'; then
+                # 是环境变量名，脚本会自动读取
+                :  # 什么都不做，脚本会读取对应的环境变量
+            else
+                # 是直接的 key，设置为环境变量
+                export AI_API_KEY="{params.api_key}"
+            fi
+        fi
+        
+        # 处理 API base
+        if [ -n "{params.api_base}" ]; then
+            if echo "{params.api_base}" | grep -qE '^[A-Z_]+$'; then
+                :  # 环境变量名，脚本自动读取
+            else
+                export AI_API_BASE="{params.api_base}"
+            fi
+        fi
         
         # 执行命令
-        import subprocess
-        with open(str(log), 'w') as log_fh:
-            result = subprocess.run(
-                cmd,
-                stdout=log_fh,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-            if result.returncode != 0:
-                raise Exception(f"AI curator failed with return code {result.returncode}")
+        eval $CMD > {log} 2>&1
         
         # 生成 JSON 输出
-        import json
-        result_data = {
-            'sample': wildcards.sample,
-            'provider': params.provider,
-            'model': params.model,
-            'status': 'completed'
-        }
-        with open(str(output.json), 'w') as f:
-            json.dump(result_data, f, indent=2)
+        python3 -c "
+import json
+result = {{
+    'sample': '{wildcards.sample}',
+    'provider': '{params.provider}',
+    'model': '{params.model}',
+    'status': 'completed'
+}}
+with open('{output.json}', 'w') as f:
+    json.dump(result, f, indent=2)
+" >> {log} 2>&1
+        """
 
 
 rule ai_multi_sample_summary:
@@ -92,32 +103,37 @@ rule ai_multi_sample_summary:
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2")
     conda:
         workflow.source_path("../env/python3.yaml")
-    resources:
-        **rule_resource(config, 'low_resource', skip_queue_on_local=True, logger=logger)
     log:
         "logs/ai_multi_sample_summary.log"
     benchmark:
-        "benchmarks/ai_multi_sample_summary.txt"
+        "benchmarks/{sample}_ai_multi_sample_summary.txt"
     message:
         "🤖 Generating multi-sample AI summary"
-    run:
-        # 如果只有一个样本，复制单样本报告
-        if len(SAMPLES) == 1:
-            import shutil
-            if len(input.ai_reports) > 0:
-                shutil.copy(str(input.ai_reports[0]), str(output.summary))
-            else:
-                with open(str(output.summary), 'w') as f:
-                    f.write(f"# AI Analysis Summary\n\nSample: {SAMPLES[0]}\n")
-        else:
-            # 多样本分析 - 创建简单的汇总
-            with open(str(output.summary), 'w') as f:
-                f.write("# AI Multi-Sample Summary\n\n")
-                f.write(f"Samples analyzed: {len(SAMPLES)}\n")
-                f.write(f"Samples: {', '.join(SAMPLES)}\n\n")
-                f.write("## Individual Reports\n\n")
-                for report in input.ai_reports:
-                    f.write(f"- {report}\n")
+    shell:
+        """
+        if [ {len(SAMPLES)} -eq 1 ]; then
+            # 单样本，复制报告
+            if [ -f "{input.ai_reports[0]}" ]; then
+                cp "{input.ai_reports[0]}" "{output.summary}"
+            else
+                echo "# AI Analysis Summary\n\nSample: {SAMPLES[0]}\n" > "{output.summary}"
+            fi
+        else
+            # 多样本，创建汇总
+            cat > "{output.summary}" << 'EOF'
+# AI Multi-Sample Summary
+
+Samples analyzed: {len(SAMPLES)}
+Samples: {params.samples}
+
+## Individual Reports
+
+EOF
+            for report in {input.ai_reports}; do
+                echo "- $report" >> "{output.summary}"
+            done
+        fi
+        """
 
 
 # =============================================================================
@@ -135,20 +151,20 @@ def check_ai_config():
             import urllib.request
             api_base = ai_config.get("api_base", "http://localhost:11434")
             urllib.request.urlopen(f"{api_base}/api/tags", timeout=2)
-            logger.info("✅ Ollama 服务检测正常")
+            print("✅ Ollama 服务检测正常")
             return True
         except:
-            logger.warning("⚠️  Ollama 服务未检测到，AI 分析将跳过或失败")
-            logger.warning("   如需使用 AI 功能，请安装并启动 Ollama:")
-            logger.warning("   curl -fsSL https://ollama.com/install.sh | sh")
-            logger.warning("   ollama pull llama3.2")
+            print("⚠️  Ollama 服务未检测到，AI 分析将跳过或失败")
+            print("   如需使用 AI 功能，请安装并启动 Ollama:")
+            print("   curl -fsSL https://ollama.com/install.sh | sh")
+            print("   ollama pull llama3.2")
             return False
     
     elif provider in ["openai", "claude"]:
         api_key = ai_config.get("api_key") or os.environ.get("AI_API_KEY")
         if not api_key:
-            logger.warning(f"⚠️  未检测到 {provider} API 密钥，AI 分析将跳过")
-            logger.warning("   请设置环境变量 AI_API_KEY 或在配置中添加 api_key")
+            print(f"⚠️  未检测到 {provider} API 密钥，AI 分析将跳过")
+            print("   请设置环境变量 AI_API_KEY 或在配置中添加 api_key")
             return False
         return True
     

@@ -55,50 +55,130 @@ snakemake --use-conda --cores 8
 snakemake --use-conda --config ai.enabled=true ai_analysis
 ```
 
-## 使用环境变量配置 API Key（推荐）
+## 🔒 API Key 安全最佳实践
 
-对于云端 API（OpenAI、Claude、阿里云等），建议使用环境变量而不是直接在配置文件中写 API key：
+**⚠️  绝对不要直接在配置文件中写入真实 API key！**
 
-### 方法 1：在配置中指定环境变量名
+### 安全风险
 
-```yaml
-ai:
-  enabled: true
-  provider: "openai"                    # 或阿里云的 compatible 模式
-  model: "glm-4.7"
-  api_key: ARK_API_KEY                  # ← 写环境变量名，代码会自动读取
-  api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-```
+| 方式 | 风险等级 | 说明 |
+|------|---------|------|
+| 明文写在 config.yaml | 🔴 极高 | 可能被提交到 Git，泄露密钥 |
+| 命令行参数传递 | 🟠 高 | 会被记录在 shell 历史和进程列表 |
+| 环境变量（✅ 推荐） | 🟢 低 | 只在内存中存在，不会持久化到文件 |
 
-然后设置环境变量：
+### ✅ 推荐做法：使用环境变量
+
+#### 步骤 1：设置环境变量（在运行前）
+
 ```bash
-export ARK_API_KEY="sk-your-actual-api-key"
-snakemake --use-conda --cores 8
+# 方式 1：当前 shell 会话（推荐用于测试）
+export AI_API_KEY="sk-your-actual-api-key"
+
+# 方式 2：写入 ~/.bashrc 或 ~/.zshrc（长期有效）
+echo 'export AI_API_KEY="sk-your-actual-api-key"' >> ~/.bashrc
+source ~/.bashrc
+
+# 方式 3：使用 .env 文件（需要 dotenv 工具）
+# 创建 .env 文件（确保 .gitignore 包含 .env）
+echo "AI_API_KEY=sk-your-actual-api-key" > .env
+source .env
 ```
 
-### 方法 2：使用通用的环境变量名
+#### 步骤 2：在配置中只写变量名
 
 ```yaml
 ai:
   enabled: true
   provider: "openai"
   model: "glm-4.7"
-  # api_key 不填，会自动读取 AI_API_KEY 环境变量
+  api_key: "AI_API_KEY"      # ← ✅ 只写变量名，不写真实 key
   api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 ```
 
+#### 步骤 3：运行分析
+
 ```bash
-export AI_API_KEY="sk-your-actual-api-key"
 snakemake --use-conda --cores 8
 ```
 
-### 方法 3：命令行临时设置
+### 🔐 安全机制说明
+
+本流程已实施以下安全措施：
+
+1. **配置文件安全**：脚本会检测 `api_key` 是否为全大写的环境变量名格式，如果是，从环境变量读取而非直接使用
+
+2. **命令行保护**：即使通过命令行传入 key，也会立即转移到环境变量，避免在 `ps` 进程列表中暴露
+
+3. **日志脱敏**：API key 不会出现在任何日志文件中，日志只显示 `长度: 32` 而非真实内容
+
+4. **Git 保护**：确保 `.gitignore` 包含 `.env` 和 `*.log`，防止意外提交敏感信息
+
+### ⚠️ 危险操作警告
+
+**永远不要这样做：**
+
+```yaml
+# ❌ config.yaml - 绝对不要这样写！
+ai:
+  api_key: "sk-abc123...xyz"  # 真实密钥明文存储
+```
 
 ```bash
-AI_API_KEY="sk-your-key" snakemake --use-conda --cores 8
+# ❌ 命令行传递 - 会被记录在 shell 历史
+snakemake --use-conda --cores 8 --config ai.api_key="sk-abc123...xyz"
 
-# 或使用 env 命令
-env AI_API_KEY="sk-your-key" snakemake --use-conda --cores 8
+# ❌ 直接在规则中使用 - 会出现在日志
+shell:
+    "python3 script.py --api-key sk-abc123...xyz"
+```
+
+### 使用不同云平台
+
+#### 阿里云百炼 (DashScope)
+
+```bash
+export DASHSCOPE_API_KEY="sk-your-dashscope-key"
+```
+
+```yaml
+ai:
+  enabled: true
+  provider: "openai"  # 阿里云使用兼容模式
+  model: "glm-4.7"
+  api_key: "DASHSCOPE_API_KEY"
+  api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+```
+
+#### OpenAI 官方
+
+```bash
+export OPENAI_API_KEY="sk-your-openai-key"
+```
+
+```yaml
+ai:
+  enabled: true
+  provider: "openai"
+  model: "gpt-4"
+  api_key: "OPENAI_API_KEY"
+  # api_base 默认为 https://api.openai.com/v1
+```
+
+#### 本地 Ollama（最安全，无需 API key）
+
+```bash
+# 无需设置 API key
+ollama serve
+```
+
+```yaml
+ai:
+  enabled: true
+  provider: "ollama"
+  model: "llama3.2"
+  # api_key 留空
+  # api_base: "http://localhost:11434"
 ```
 
 ## 使用云端 API

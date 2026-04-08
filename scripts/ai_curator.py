@@ -44,23 +44,39 @@ class AICurator:
         self.provider = provider.lower()
         self.model = model
         
-        # 处理 api_key：如果看起来像环境变量名，或不是以 key 开头，尝试从环境变量读取
+        # 安全处理 api_key：避免在日志中暴露真实 key
+        self._api_key_source = None  # 记录 key 的来源，用于调试
+        
         if api_key:
-            # 如果是环境变量名格式（全大写+下划线），或该值是已存在的环境变量
+            # 如果是环境变量名格式（全大写+下划线），从环境变量读取
             if api_key.isupper() and '_' in api_key:
                 env_value = os.getenv(api_key)
                 if env_value:
                     self.api_key = env_value
-                    logger.debug(f"从环境变量 {api_key} 读取 API key")
+                    self._api_key_source = f"env:{api_key}"
+                    # 安全日志：只显示来源，不显示 key 内容
+                    logger.debug(f"从环境变量 {api_key} 读取 API key (长度: {len(env_value)})")
                 else:
                     logger.warning(f"环境变量 {api_key} 未设置")
                     self.api_key = None
+                    self._api_key_source = None
             else:
+                # 直接使用提供的 key（不推荐，但为了兼容性保留）
                 self.api_key = api_key
+                self._api_key_source = "direct"
+                logger.warning("⚠️  API key 以明文形式传入，存在安全风险！建议使用环境变量。")
         else:
-            self.api_key = os.getenv("AI_API_KEY")
+            # 尝试从默认环境变量读取
+            env_value = os.getenv("AI_API_KEY")
+            if env_value:
+                self.api_key = env_value
+                self._api_key_source = "env:AI_API_KEY"
+                logger.debug(f"从环境变量 AI_API_KEY 读取 API key (长度: {len(env_value)})")
+            else:
+                self.api_key = None
+                self._api_key_source = None
         
-        # 处理 api_base
+        # 安全处理 api_base
         if api_base:
             if api_base.isupper() and '_' in api_base:
                 env_value = os.getenv(api_base)
@@ -355,6 +371,11 @@ def main():
     
     args = parser.parse_args()
     
+    # 安全检查：如果 api-key 以命令行传入，给出警告
+    if args.api_key and not (args.api_key.isupper() and '_' in args.api_key):
+        logger.warning("⚠️  安全警告: API key 通过命令行参数传入，可能在进程列表中暴露！")
+        logger.warning("   建议改用环境变量方式: export AI_API_KEY='your-key'")
+    
     # 检查输入文件
     if not Path(args.eggnog).exists():
         logger.error(f"eggnog 文件不存在: {args.eggnog}")
@@ -372,6 +393,7 @@ def main():
     logger.info(f"eggnog: {len(eggnog_df)} 条, Kofam: {len(kofam_df)} 条")
     
     # 初始化 AI Curator
+    # 注意：AICurator 会安全处理 api_key，不会打印到日志
     logger.info(f"初始化 AI ({args.provider}/{args.model})...")
     try:
         curator = AICurator(
