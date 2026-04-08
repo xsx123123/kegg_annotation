@@ -386,6 +386,186 @@ python3 scripts/merge_results.py \
 
 ---
 
+## AI 注释分析功能
+
+KEGG Annotation Pipeline 现在支持 AI 驱动的注释质量评估和功能解读！
+
+### 功能特点
+
+- **智能质量评估**: AI 自动评估注释结果的可靠性和完整性
+- **功能摘要生成**: 自动撰写样本的功能特征描述
+- **问题识别**: 发现潜在的注释冲突和低质量结果
+- **改进建议**: 提供针对性的分析优化建议
+- **通路解读**: 对关键生物学通路进行智能解读
+
+### 支持的 AI 提供商
+
+| 提供商 | 模型示例 | 特点 |
+|--------|---------|------|
+| **Ollama** (默认) | llama3.2, mistral | 本地运行，无需联网，免费 |
+| **OpenAI** | gpt-4, gpt-3.5-turbo | 云端 API，性能强 |
+| **Claude** | claude-3-sonnet | 云端 API，擅长长文本 |
+
+### 快速开始
+
+#### 1. 使用本地 Ollama（推荐）
+
+```bash
+# 安装 Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 下载模型（以 llama3.2 为例，4GB 左右）
+ollama pull llama3.2
+
+# 确认服务运行
+curl http://localhost:11434/api/tags
+```
+
+#### 2. 启用 AI 分析
+
+编辑 `conf/config.yaml`:
+
+```yaml
+ai:
+  enabled: true
+  provider: "ollama"
+  model: "llama3.2"
+  # api_base: "http://localhost:11434"  # 可选：自定义端点
+```
+
+#### 3. 运行分析
+
+```bash
+# 运行完整流程（包含 AI 分析）
+snakemake --use-conda --cores 8
+
+# 或仅运行 AI 分析（已有注释结果）
+snakemake --use-conda --config ai.enabled=true ai_analysis
+```
+
+### 输出结果
+
+AI 分析会生成以下文件：
+
+```
+results/
+├── {sample}/
+│   ├── {sample}_ai_report.md          # AI 分析报告（Markdown）
+│   └── {sample}_ai_analysis.json      # 结构化数据（JSON）
+└── merged/
+    └── AI_MULTI_SAMPLE_SUMMARY.md     # 多样本汇总（多样本时）
+```
+
+---
+
+## 安全指南 🔒
+
+### API 密钥安全最佳实践
+
+**⚠️  绝对不要直接在配置文件中写入真实 API key！**
+
+#### 安全风险
+
+| 方式 | 风险等级 | 说明 |
+|------|---------|------|
+| 明文写在 config.yaml | 🔴 极高 | 可能被提交到 Git，泄露密钥 |
+| 命令行参数传递 | 🟠 高 | 会被记录在 shell 历史和进程列表 |
+| 环境变量（✅ 推荐） | 🟢 低 | 只在内存中存在，不会持久化到文件 |
+
+#### ✅ 推荐做法：使用环境变量
+
+##### 步骤 1：设置环境变量（在运行前）
+
+```bash
+# 方式 1：当前 shell 会话（推荐用于测试）
+export AI_API_KEY="sk-your-actual-api-key"
+
+# 方式 2：写入 ~/.bashrc 或 ~/.zshrc（长期有效）
+echo 'export AI_API_KEY="sk-your-actual-api-key"' >> ~/.bashrc
+source ~/.bashrc
+
+# 方式 3：使用 .env 文件（需要 dotenv 工具）
+# 创建 .env 文件（确保 .gitignore 包含 .env）
+echo "AI_API_KEY=sk-your-actual-api-key" > .env
+source .env
+```
+
+##### 步骤 2：在配置中只写变量名
+
+```yaml
+ai:
+  enabled: true
+  provider: "openai"
+  model: "glm-4.7"
+  api_key: "AI_API_KEY"      # ← ✅ 只写变量名，不写真实 key
+  api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+```
+
+##### 步骤 3：运行分析
+
+```bash
+snakemake --use-conda --cores 8
+```
+
+### 🔐 安全机制说明
+
+本流程已实施以下安全措施：
+
+1. **配置文件安全**：脚本会检测 `api_key` 是否为全大写的环境变量名格式，如果是，从环境变量读取而非直接使用
+2. **命令行保护**：即使通过命令行传入 key，也会立即转移到环境变量，避免在 `ps` 进程列表中暴露
+3. **日志脱敏**：API key 不会出现在任何日志文件中，日志只显示 `长度: 32` 而非真实内容
+4. **Git 保护**：确保 `.gitignore` 包含 `.env` 和 `*.log`，防止意外提交敏感信息
+
+### 使用不同云平台
+
+#### 阿里云百炼 (DashScope)
+
+```bash
+export DASHSCOPE_API_KEY="sk-your-dashscope-key"
+```
+
+```yaml
+ai:
+  enabled: true
+  provider: "openai"  # 阿里云使用兼容模式
+  model: "glm-4.7"
+  api_key: "DASHSCOPE_API_KEY"
+  api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+```
+
+#### OpenAI 官方
+
+```bash
+export OPENAI_API_KEY="sk-your-openai-key"
+```
+
+```yaml
+ai:
+  enabled: true
+  provider: "openai"
+  model: "gpt-4"
+  api_key: "OPENAI_API_KEY"
+  # api_base 默认为 https://api.openai.com/v1
+```
+
+#### 本地 Ollama（最安全，无需 API key）
+
+```bash
+# 无需设置 API key
+ollama serve
+```
+
+```yaml
+ai:
+  enabled: true
+  provider: "ollama"
+  model: "llama3.2"
+  # api_key 留空
+  # api_base: "http://localhost:11434"
+```
+
+---
+
 ## 常见问题
 
 ### Q1: 首次运行很慢？

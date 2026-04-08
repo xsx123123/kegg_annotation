@@ -106,7 +106,7 @@ rule ai_multi_sample_summary:
     log:
         "logs/ai_multi_sample_summary.log"
     benchmark:
-        "benchmarks/{sample}_ai_multi_sample_summary.txt"
+        "benchmarks/ai_multi_sample_summary.txt"
     message:
         "🤖 Generating multi-sample AI summary"
     shell:
