@@ -43,26 +43,20 @@ rule ai_annotation_curator:
         "🤖 Running AI analysis on {wildcards.sample}"
     shell:
         """
-        # 构建基础命令
+        # 构建基础命令（必须显式传入 --api-key / --api-base，否则脚本无法获知配置）
         CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --provider {params.provider} --model {params.model}"
         
-        # 处理 API key（安全方式）
+        # 追加 API key 和 API base 参数
         if [ -n "{params.api_key}" ]; then
-            # 检查是否为环境变量名（全大写+下划线）
-            if echo "{params.api_key}" | grep -qE '^[A-Z_]+$'; then
-                # 是环境变量名，脚本会自动读取
-                :  # 什么都不做，脚本会读取对应的环境变量
-            else
-                # 是直接的 key，设置为环境变量
+            CMD="$CMD --api-key '{params.api_key}'"
+            # 如果直接是 key 而非环境变量名，额外导出到 AI_API_KEY 作为兜底
+            if ! echo "{params.api_key}" | grep -qE '^[A-Z_]+$'; then
                 export AI_API_KEY="{params.api_key}"
             fi
         fi
-        
-        # 处理 API base
         if [ -n "{params.api_base}" ]; then
-            if echo "{params.api_base}" | grep -qE '^[A-Z_]+$'; then
-                :  # 环境变量名，脚本自动读取
-            else
+            CMD="$CMD --api-base '{params.api_base}'"
+            if ! echo "{params.api_base}" | grep -qE '^[A-Z_]+$'; then
                 export AI_API_BASE="{params.api_base}"
             fi
         fi
