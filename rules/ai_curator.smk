@@ -34,7 +34,7 @@ rule ai_annotation_curator:
         # 将脚本路径作为参数传递
         ai_curator_script = AI_CURATOR
     conda:
-        workflow.source_path("../env/python3.yaml")
+        workflow.source_path("../env/openai.yaml")
     log:
         "logs/{sample}_ai_curator.log"
     benchmark:
@@ -102,7 +102,7 @@ rule ai_multi_sample_summary:
         provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2")
     conda:
-        workflow.source_path("../env/python3.yaml")
+        workflow.source_path("../env/openai.yaml")
     log:
         "logs/ai_multi_sample_summary.log"
     benchmark:

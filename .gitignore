@@ -46,6 +46,12 @@ Thumbs.db
 
 # 日志文件
 *.log
+logs/
+
+# 环境变量文件（包含敏感信息如 API key）
+.env
+.env.local
+.env.*.local
 
 # Snakemake
 .snakemake/
