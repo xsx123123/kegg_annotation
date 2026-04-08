@@ -15,7 +15,7 @@ rule integrate_annotations:
         tsv = "{sample}/{sample}_integrated.tsv",
         report = "{sample}/{sample}_integrated_report.txt"
     conda:
-        "env/python3.yaml"
+        workflow.source_path("../env/python3.yaml"),
     resources:
         **rule_resource(config, 'low_resource', skip_queue_on_local=True, logger=logger)
     log:
