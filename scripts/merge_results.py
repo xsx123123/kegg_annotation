@@ -50,16 +50,16 @@ def merge_eggnog_results(input_dir, samples, output_all, output_high, output_sta
             progress.advance(task)
             
             # 读取完整结果
-            all_file = os.path.join(input_dir, sample, f"{sample}_eggnog_formatted.tsv")
-            high_file = os.path.join(input_dir, sample, f"{sample}_eggnog_high_confidence.tsv")
+            all_file = os.path.join(input_dir, sample, f"{sample}_eggnog.tsv")
+            high_file = os.path.join(input_dir, sample, f"{sample}_eggnog_highconf.tsv")
             
             if not os.path.exists(all_file):
                 logger.warning(f"文件不存在，跳过: {all_file}")
                 continue
             
             try:
-                # 读取完整结果 (跳过注释行，eggnog 输出有 13 行注释头)
-                df_all = pd.read_csv(all_file, sep='\t', skiprows=14, low_memory=False)
+                # 读取完整结果 (processor 输出的 TSV 可能有注释行)
+                df_all = pd.read_csv(all_file, sep='\t', low_memory=False, comment='#')
                 df_all['sample'] = sample  # 添加样本列
                 all_records.append(df_all)
                 
@@ -181,16 +181,16 @@ def merge_kofam_results(input_dir, samples, output_all, output_high, output_stat
             progress.advance(task)
             
             # 读取完整结果
-            all_file = os.path.join(input_dir, sample, f"{sample}_kofam_formatted.tsv")
-            high_file = os.path.join(input_dir, sample, f"{sample}_kofam_high_confidence.tsv")
+            all_file = os.path.join(input_dir, sample, f"{sample}_kofam.tsv")
+            high_file = os.path.join(input_dir, sample, f"{sample}_kofam_highconf.tsv")
             
             if not os.path.exists(all_file):
                 logger.warning(f"文件不存在，跳过: {all_file}")
                 continue
             
             try:
-                # 读取完整结果
-                df_all = pd.read_csv(all_file, sep='\t', low_memory=False)
+                # 读取完整结果 (processor 输出的 TSV 可能有注释行)
+                df_all = pd.read_csv(all_file, sep='\t', low_memory=False, comment='#')
                 df_all['sample'] = sample
                 all_records.append(df_all)
                 
