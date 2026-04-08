@@ -18,10 +18,10 @@ rule ai_annotation_curator:
         report = "{sample}/{sample}_ai_report.md",
         json = "{sample}/{sample}_ai_analysis.json"
     params:
-        provider = config.get("ai", {}).get("provider", "ollama"),
-        model = config.get("ai", {}).get("model", "llama3.2"),
-        api_key = config.get("ai", {}).get("api_key", ""),
-        api_base = config.get("ai", {}).get("api_base", "")
+        provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
+        model = lambda wc: config.get("ai", {}).get("model", "llama3.2"),
+        api_key = lambda wc: config.get("ai", {}).get("api_key", ""),
+        api_base = lambda wc: config.get("ai", {}).get("api_base", "")
     conda:
         workflow.source_path("../env/python3.yaml")
     resources:
@@ -32,35 +32,46 @@ rule ai_annotation_curator:
         "benchmarks/{sample}_ai_curator.txt"
     message:
         "🤖 Running AI analysis on {wildcards.sample}"
-    shell:
-        """
-        python3 "{AI_CURATOR}" \
-            -e {input.eggnog} \
-            -k {input.kofam} \
-            -s {wildcards.sample} \
-            -o {output.report} \
-            --provider {params.provider} \
-            --model {params.model} \
-            {params.api_key and '--api-key ' + params.api_key or ''} \
-            {params.api_base and '--api-base ' + params.api_base or ''} \
-            > {log} 2>&1
+    run:
+        # 构建命令参数
+        cmd = [
+            "python3", str(AI_CURATOR),
+            "-e", str(input.eggnog),
+            "-k", str(input.kofam),
+            "-s", str(wildcards.sample),
+            "-o", str(output.report),
+            "--provider", str(params.provider),
+            "--model", str(params.model)
+        ]
         
-        # 同时保存 JSON 格式的详细结果
-        python3 -c "
-import json
-import sys
-# 从报告中提取 JSON 数据（实际应该在脚本中直接输出）
-# 这里只是一个占位符
-result = {{
-    'sample': '{wildcards.sample}',
-    'provider': '{params.provider}',
-    'model': '{params.model}',
-    'status': 'completed'
-}}
-with open('{output.json}', 'w') as f:
-    json.dump(result, f, indent=2)
-"
-        """
+        # 添加可选参数
+        if params.api_key:
+            cmd.extend(["--api-key", str(params.api_key)])
+        if params.api_base:
+            cmd.extend(["--api-base", str(params.api_base)])
+        
+        # 执行命令
+        import subprocess
+        with open(str(log), 'w') as log_fh:
+            result = subprocess.run(
+                cmd,
+                stdout=log_fh,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            if result.returncode != 0:
+                raise Exception(f"AI curator failed with return code {result.returncode}")
+        
+        # 生成 JSON 输出
+        import json
+        result_data = {
+            'sample': wildcards.sample,
+            'provider': params.provider,
+            'model': params.model,
+            'status': 'completed'
+        }
+        with open(str(output.json), 'w') as f:
+            json.dump(result_data, f, indent=2)
 
 
 rule ai_multi_sample_summary:
@@ -70,15 +81,15 @@ rule ai_multi_sample_summary:
     比较多个样本的注释结果，识别共性和差异。
     """
     input:
-        ai_reports = expand("{sample}/{sample}_ai_report.md", sample=SAMPLES),
-        eggnog_merged = "merged/eggnog_all_samples.tsv" if len(SAMPLES) > 1 else [],
-        kofam_merged = "merged/kofam_all_samples.tsv" if len(SAMPLES) > 1 else []
+        ai_reports = expand("{sample}/{sample}_ai_report.md", sample=SAMPLES) if AI_ENABLED else [],
+        eggnog_merged = "merged/eggnog_all_samples.tsv" if len(SAMPLES) > 1 and AI_ENABLED else [],
+        kofam_merged = "merged/kofam_all_samples.tsv" if len(SAMPLES) > 1 and AI_ENABLED else []
     output:
         summary = "merged/AI_MULTI_SAMPLE_SUMMARY.md"
     params:
         samples = " ".join(SAMPLES),
-        provider = config.get("ai", {}).get("provider", "ollama"),
-        model = config.get("ai", {}).get("model", "llama3.2")
+        provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
+        model = lambda wc: config.get("ai", {}).get("model", "llama3.2")
     conda:
         workflow.source_path("../env/python3.yaml")
     resources:
@@ -92,24 +103,25 @@ rule ai_multi_sample_summary:
     run:
         # 如果只有一个样本，复制单样本报告
         if len(SAMPLES) == 1:
-            shell("cp {input.ai_reports[0]} {output.summary}")
+            import shutil
+            if len(input.ai_reports) > 0:
+                shutil.copy(str(input.ai_reports[0]), str(output.summary))
+            else:
+                with open(str(output.summary), 'w') as f:
+                    f.write(f"# AI Analysis Summary\n\nSample: {SAMPLES[0]}\n")
         else:
-            # 多样本分析
-            shell("""
-                python3 "{AI_CURATOR}" \
-                    --mode multi-sample \
-                    --samples {params.samples} \
-                    --eggnog-merged {input.eggnog_merged} \
-                    --kofam-merged {input.kofam_merged} \
-                    --output {output.summary} \
-                    --provider {params.provider} \
-                    --model {params.model} \
-                    > {log} 2>&1 || echo "# AI 多样本汇总\n\n样本数: {len(SAMPLES)}\n样本: {params.samples}\n\n> 注：AI 分析需要配置 API 密钥" > {output.summary}
-            """)
+            # 多样本分析 - 创建简单的汇总
+            with open(str(output.summary), 'w') as f:
+                f.write("# AI Multi-Sample Summary\n\n")
+                f.write(f"Samples analyzed: {len(SAMPLES)}\n")
+                f.write(f"Samples: {', '.join(SAMPLES)}\n\n")
+                f.write("## Individual Reports\n\n")
+                for report in input.ai_reports:
+                    f.write(f"- {report}\n")
 
 
 # =============================================================================
-# AI 配置检查
+# AI 配置检查（可选）
 # =============================================================================
 
 def check_ai_config():
@@ -119,8 +131,8 @@ def check_ai_config():
     
     if provider == "ollama":
         # 检查 Ollama 是否运行
-        import urllib.request
         try:
+            import urllib.request
             api_base = ai_config.get("api_base", "http://localhost:11434")
             urllib.request.urlopen(f"{api_base}/api/tags", timeout=2)
             logger.info("✅ Ollama 服务检测正常")
@@ -141,7 +153,3 @@ def check_ai_config():
         return True
     
     return False
-
-
-# 在启动时检查 AI 配置（可选）
-# check_ai_config()

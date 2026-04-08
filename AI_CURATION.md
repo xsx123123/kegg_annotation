@@ -55,6 +55,52 @@ snakemake --use-conda --cores 8
 snakemake --use-conda --config ai.enabled=true ai_analysis
 ```
 
+## 使用环境变量配置 API Key（推荐）
+
+对于云端 API（OpenAI、Claude、阿里云等），建议使用环境变量而不是直接在配置文件中写 API key：
+
+### 方法 1：在配置中指定环境变量名
+
+```yaml
+ai:
+  enabled: true
+  provider: "openai"                    # 或阿里云的 compatible 模式
+  model: "glm-4.7"
+  api_key: ARK_API_KEY                  # ← 写环境变量名，代码会自动读取
+  api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+```
+
+然后设置环境变量：
+```bash
+export ARK_API_KEY="sk-your-actual-api-key"
+snakemake --use-conda --cores 8
+```
+
+### 方法 2：使用通用的环境变量名
+
+```yaml
+ai:
+  enabled: true
+  provider: "openai"
+  model: "glm-4.7"
+  # api_key 不填，会自动读取 AI_API_KEY 环境变量
+  api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+```
+
+```bash
+export AI_API_KEY="sk-your-actual-api-key"
+snakemake --use-conda --cores 8
+```
+
+### 方法 3：命令行临时设置
+
+```bash
+AI_API_KEY="sk-your-key" snakemake --use-conda --cores 8
+
+# 或使用 env 命令
+env AI_API_KEY="sk-your-key" snakemake --use-conda --cores 8
+```
+
 ## 使用云端 API
 
 ### OpenAI

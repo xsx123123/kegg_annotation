@@ -1,152 +1,85 @@
-# =============================================================================
-# KEGG Annotation Pipeline
-# =============================================================================
-# Integrated gene function annotation pipeline combining eggnog-mapper and KofamScan
-#
-# Usage:
-#   Local:   snakemake --use-conda --cores 8
-#   Cluster: snakemake --use-conda --profile cluster_profile
-# =============================================================================
+#!/usr/bin/env python3
+# *---utf-8---*
+# Version: KEGG-Annotator v1.0.0
+# Author: JZHANG
+"""
+KEGG Annotation Pipeline
+========================
+Integrated gene function annotation pipeline combining eggnog-mapper and KofamScan
+
+Usage:
+    Local:   snakemake --use-conda --cores 8
+    Cluster: snakemake --use-conda --profile cluster_profile
+    With AI: snakemake --use-conda --cores 8 --config ai.enabled=true
+"""
 
 import sys
 import os
-import yaml
 from snakemake.utils import min_version, validate
-from pathlib import Path
+
+# ------- Import Custom Modules ------- #
+from rules.utils.validate import load_user_config
+from rules.utils.reference_update import resolve_db_paths
+from rules.utils.resource_manager import rule_resource
 
 
-# =============================================================================
-# Utility Functions (defined before use)
-# =============================================================================
-
-def load_user_config(config, cmd_arg_name="user_yaml") -> None:
-    """
-    Parse the configuration file path passed from the command line and merge it into the current config.
-
-    Args:
-        config (dict): Snakemake's global config object
-        cmd_arg_name (str): The key name after --config in command line, defaults to "user_yaml"
-    """
-    custom_path = config.get(cmd_arg_name)
-
-    # If the user didn't pass this parameter, return directly and use the default configuration
-    if not custom_path:
-        return
-
-    # Check if the file exists
-    if not os.path.exists(custom_path):
-        print(f"\n\033[91m[Config Error] Cannot find the specified user configuration file: {custom_path}\033[0m\nPlease check if the path is correct.\n", file=sys.stderr)
-        sys.exit(1)
-
-    # Load and merge configuration
-    print(f"\033[92m[Config Info] Loading external project configuration: {custom_path}\033[0m")
-    
-    try:
-        with open(custom_path, 'r') as f:
-            custom_data = yaml.safe_load(f)
-        
-        if custom_data:
-            # Core step: recursively merge dictionaries
-            def update_config(base, update):
-                for key, value in update.items():
-                    if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-                        update_config(base[key], value)
-                    else:
-                        base[key] = value
-            
-            update_config(config, custom_data)
-        else:
-            print(f"[Config Warning] File {custom_path} is empty, skipping loading.")
-
-    except Exception as e:
-        sys.exit(f"\n[Config Error] Failed to parse YAML file: {e}\n")
-
-
-# =============================================================================
-# Version Lock
-# =============================================================================
+# Lock Snakemake Version
 min_version("9.9.0")
 
 
-# =============================================================================
-# Load Configuration
-# =============================================================================
+# --------- 1. Config Loading --------- #
+# Load default configs from conf/ directory
+configfile: "conf/config.yaml"
+configfile: "conf/resource.yaml"
+configfile: "conf/parameter.yaml"
+configfile: "conf/ai.yaml"
 
-# Load default configuration (if exists)
-if os.path.exists("conf/config.yaml"):
-    configfile: "conf/config.yaml"
-
-
-# Load user-provided configuration via --config analysisyaml=/path/to/config.yaml
+# Load CLI argument config (Highest Priority)
 load_user_config(config, cmd_arg_name='analysisyaml')
 
 
-# =============================================================================
-# Setup Working Directory
-# =============================================================================
-# Redirect workspaces to user-specified workflow directory
-# This enables separation of analysis code and working directory
+# --------- 2. Processing & Validation --------- #
+# Update absolute paths for database directories
+resolve_db_paths(config, base_path=config.get('dataset_dir'))
 
+# Get logger instance for pipeline logging
+from rules.utils.logger import get_pipeline_logger
+logger = get_pipeline_logger()
+logger.info("Configuration loaded and validated")
+
+
+# --------- 3. Workspaces Setup --------- #
+# Redirect workspace to config['workflow'] directory
 workflow_dir = config.get("workflow", os.getcwd())
 workdir: workflow_dir
+logger.info(f"Redirect workspaces to {workflow_dir}")
 
 
-# =============================================================================
-# Resolve Database Paths
-# =============================================================================
-# Convert relative database paths to absolute paths based on dataset_dir
-
-from rules.utils import resolve_db_paths
-
-resolve_db_paths(config)
-
-
-# =============================================================================
-# Import Sub-rules
-# =============================================================================
-
-# Global configuration definitions
-include: "rules/config.smk"
-
-# Common utilities, helper functions, and logger setup
-include: "rules/common.smk"
-
-# eggnog-mapper annotation and processing rules
-include: "rules/eggnog.smk"
-
-# KofamScan annotation and processing rules
-include: "rules/kofamscan.smk"
-
-# Report generation rules
-include: "rules/report.smk"
-
-# Merge results rules
-include: "rules/merge.smk"
-
-# AI curator rules (optional)
+# --------- 4. Rules Import --------- #
+include: "rules/config.smk" # Global configuration definitions
+include: "rules/common.smk" # Common utilities and helper functions
+include: "rules/eggnog.smk" # eggnog-mapper annotation rules
+include: "rules/kofamscan.smk" # KofamScan annotation rules
+include: "rules/report.smk" # Report generation rules
+include: "rules/merge.smk" # Results merging rules
 if AI_ENABLED:
-    include: "rules/ai_curator.smk"
-
-
-# =============================================================================
-# Logger Setup (Post-workdir)
-# =============================================================================
-# Log the workdir redirect after setup
-
-logger.info("=" * 70)
+    include: "rules/ai_curator.smk" # AI curator rules (optional, loaded only if ai.enabled=true)
+# --------- 5. Pipeline Initialization --------- #
+# Log pipeline startup information
+logger.info("=" * 60)
 logger.info("KEGG Annotation Pipeline Started")
-logger.info("=" * 70)
+logger.info("=" * 60)
 logger.info(f"Working directory: {workflow_dir}")
 logger.info(f"Samples: {SAMPLES}")
 logger.info(f"Input directory: {INPUT_DIR}")
 logger.info(f"Output directory: {OUTPUT_DIR}")
-logger.info("=" * 70)
+if AI_ENABLED:
+    logger.info(f"AI Analysis: Enabled ({AI_CONFIG.get('provider', 'unknown')}/{AI_CONFIG.get('model', 'unknown')})")
+logger.info("=" * 60)
 
 
-# =============================================================================
-# Target Rules
-# =============================================================================
-
+# --------- 6. Target Rules --------- #
+# Default target: run all analysis steps
 rule all:
     """
     Default target rule - generates all outputs for all samples.
@@ -160,6 +93,7 @@ rule all:
         - Per-sample summary reports
         - Merged results (if multiple samples)
         - Multi-sample summary report (if multiple samples)
+        - AI analysis reports (if AI is enabled)
     """
     input:
         get_all_outputs()
@@ -167,21 +101,23 @@ rule all:
         "✅ Pipeline complete! All outputs generated."
 
 
+# Target: annotation only (skip merging and AI)
 rule annotate:
     """
-    Target rule for annotation only (skip merging).
+    Target rule for annotation only (skip merging and AI analysis).
     
     Use this target to run annotation for all samples without
     generating merged summary files:
         snakemake --use-conda annotate
     """
     input:
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_eggnog_formatted.tsv", sample=SAMPLES),
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_kofam_formatted.tsv", sample=SAMPLES)
+        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_eggnog.tsv", sample=SAMPLES),
+        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_kofam.tsv", sample=SAMPLES)
     message:
         "✅ Annotation complete for all samples"
 
 
+# Target: generate summary reports
 rule reports:
     """
     Target rule for generating all reports.
@@ -190,11 +126,12 @@ rule reports:
         snakemake --use-conda reports
     """
     input:
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_annotation_summary.txt", sample=SAMPLES)
+        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_summary.txt", sample=SAMPLES)
     message:
         "✅ Reports generated for all samples"
 
 
+# Target: AI-powered analysis (requires ai.enabled=true)
 rule ai_analysis:
     """
     Target rule for AI-powered annotation analysis.
@@ -204,6 +141,22 @@ rule ai_analysis:
         snakemake --use-conda --config ai.enabled=true ai_analysis
     """
     input:
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_ai_report.md", sample=SAMPLES)
+        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_ai_report.md", sample=SAMPLES) if AI_ENABLED else []
     message:
         "🤖 AI analysis complete!"
+
+
+# Target: merge results from multiple samples
+rule merge:
+    """
+    Target rule for merging results from multiple samples.
+    
+    Only useful when analyzing multiple samples:
+        snakemake --use-conda merge
+    """
+    input:
+        "merged/eggnog_all_samples.tsv" if len(SAMPLES) > 1 else [],
+        "merged/kofam_all_samples.tsv" if len(SAMPLES) > 1 else [],
+        "merged/SUMMARY_REPORT.txt" if len(SAMPLES) > 1 else []
+    message:
+        "✅ Results merged successfully"
