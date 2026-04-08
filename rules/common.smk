@@ -181,21 +181,24 @@ def get_all_outputs():
         outputs.append(f"{sample}/{sample}_kofam_highconf.tsv")
         outputs.append(f"{sample}/{sample}_summary.txt")
         
+        # 整合评分结果
+        outputs.append(f"{sample}/{sample}_integrated.tsv")
+        outputs.append(f"{sample}/{sample}_integrated_report.txt")
+        
         # AI 分析结果（如果启用）
         if AI_ENABLED:
             outputs.append(f"{sample}/{sample}_ai_report.md")
             outputs.append(f"{sample}/{sample}_ai_analysis.json")
     
-    # 多样本时添加合并结果
-    if len(SAMPLES) > 1:
-        outputs.append("merged/eggnog_all_samples.tsv")
-        outputs.append("merged/eggnog_highconf.tsv")
-        outputs.append("merged/kofam_all_samples.tsv")
-        outputs.append("merged/kofam_highconf.tsv")
-        outputs.append("merged/SUMMARY_REPORT.txt")
-        
-        # AI 多样本汇总（如果启用）
-        if AI_ENABLED:
-            outputs.append("merged/AI_MULTI_SAMPLE_SUMMARY.md")
+    # 始终添加合并结果（单样本时相当于复制到 merged/ 目录作为标准化输出）
+    outputs.append("merged/eggnog_all_samples.tsv")
+    outputs.append("merged/eggnog_highconf.tsv")
+    outputs.append("merged/kofam_all_samples.tsv")
+    outputs.append("merged/kofam_highconf.tsv")
+    outputs.append("merged/SUMMARY_REPORT.txt")
+    
+    # AI 多样本汇总（如果启用）
+    if AI_ENABLED:
+        outputs.append("merged/AI_MULTI_SAMPLE_SUMMARY.md")
     
     return outputs

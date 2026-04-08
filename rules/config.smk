@@ -179,6 +179,12 @@ KOFAMSCAN_PROCESSOR = _resolve_script_path(_scripts.get("KofamScan_processor", "
 # - 作用: 合并多个样本的注释结果
 MERGE_RESULTS = _resolve_script_path(_scripts.get("merge_results", "scripts/merge_results.py"))
 
+# INTEGRATE_ANNOTATIONS: eggnog + KofamScan 整合评分脚本
+# - 对应 conf/config.yaml 中的 scripts.integrate_annotations
+# - 默认值: "scripts/integrate_annotations.py"
+# - 作用: 将 eggnog 和 KofamScan 结果横向整合，并给出综合评分
+INTEGRATE_ANNOTATIONS = _resolve_script_path(_scripts.get("integrate_annotations", "scripts/integrate_annotations.py"))
+
 # AI_CURATOR: AI 分析脚本（可选功能）
 # - 对应 conf/config.yaml 中的 scripts.ai_curator
 # - 默认值: "scripts/ai_curator.py"

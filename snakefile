@@ -61,6 +61,7 @@ include: "rules/common.smk" # Common utilities and helper functions
 include: "rules/eggnog.smk" # eggnog-mapper annotation rules
 include: "rules/kofamscan.smk" # KofamScan annotation rules
 include: "rules/report.smk" # Report generation rules
+include: "rules/integrate.smk" # Integrate eggnog + KofamScan with scoring
 include: "rules/merge.smk" # Results merging rules
 if AI_ENABLED:
     include: "rules/ai_curator.smk" # AI curator rules (optional, loaded only if ai.enabled=true)
@@ -149,14 +150,14 @@ rule ai_analysis:
 # Target: merge results from multiple samples
 rule merge:
     """
-    Target rule for merging results from multiple samples.
+    Target rule for merging results from all samples.
     
-    Only useful when analyzing multiple samples:
+    Always generates merged outputs in merged/ directory:
         snakemake --use-conda merge
     """
     input:
-        "merged/eggnog_all_samples.tsv" if len(SAMPLES) > 1 else [],
-        "merged/kofam_all_samples.tsv" if len(SAMPLES) > 1 else [],
-        "merged/SUMMARY_REPORT.txt" if len(SAMPLES) > 1 else []
+        "merged/eggnog_all_samples.tsv",
+        "merged/kofam_all_samples.tsv",
+        "merged/SUMMARY_REPORT.txt"
     message:
         "✅ Results merged successfully"
