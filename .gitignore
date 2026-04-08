@@ -10,9 +10,13 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 venv/
 ENV/
+
+# Python 虚拟环境（在根目录的 env/）
+/env/
+!/env/*.yaml
+!/env/*.yml
 build/
 develop-eggs/
 dist/
@@ -68,7 +72,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 venv/
 ENV/
 build/

@@ -29,7 +29,7 @@ resource_presets:
 
 # 数据根目录 - 所有数据库路径的基准目录
 # 可以是绝对路径或相对于 pipeline 根目录的路径
-dataset_dir: /home/zj/pipeline/kegg_annotation
+dataset_dir: /data/jzhang/reference/kegg_annotation
 
 # 输入/输出目录
 input_dir: "test"           # 输入序列目录
