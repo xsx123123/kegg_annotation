@@ -160,14 +160,28 @@ def get_input_file(wildcards):
     """获取输入文件路径
     
     支持的输入格式: .pep, .fa, .fasta, .faa, .protein
+    以及复合扩展名（如 .fa.TD2.1k.pep）
     按顺序查找，返回第一个存在的文件
     """
+    import glob
     extensions = [".pep", ".fa", ".fasta", ".faa", ".protein"]
+    base = wildcards.sample
+    
+    # 1. 先尝试精确匹配常见简单扩展名
     for ext in extensions:
-        path = os.path.join(INPUT_DIR, f"{wildcards.sample}{ext}")
+        path = os.path.join(INPUT_DIR, f"{base}{ext}")
         if os.path.exists(path):
             return path
-    return os.path.join(INPUT_DIR, f"{wildcards.sample}.pep")
+    
+    # 2. 再尝试匹配以 sample 开头、以任一允许扩展名结尾的复合扩展名文件
+    for ext in extensions:
+        pattern = os.path.join(INPUT_DIR, f"{base}*{ext}")
+        candidates = glob.glob(pattern)
+        if candidates:
+            return candidates[0]
+    
+    # 兜底：返回默认路径（让 Snakemake 后续报错提示）
+    return os.path.join(INPUT_DIR, f"{base}.pep")
 
 
 def get_all_outputs():
