@@ -23,6 +23,7 @@ rule annotation_summary:
         "📝 Generating summary for {wildcards.sample}"
     shell:
         """
+        exec > {log} 2>&1
         cat > {output.summary} << EOF
 ================================================================================
 Sample: {wildcards.sample}

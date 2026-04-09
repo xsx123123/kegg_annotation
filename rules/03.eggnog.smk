@@ -83,5 +83,6 @@ rule eggnog_processor:
             --min-confidence {params.min_confidence} \
             {params.require_kegg} \
             {params.require_go} \
-            --log {log}
+            --log {log} \
+            > {log} 2>&1
         """

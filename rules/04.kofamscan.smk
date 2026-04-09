@@ -86,5 +86,6 @@ rule kofamscan_processor:
             -o {params.output_prefix} \
             -e {input.eggnog_annotations} \
             --min-confidence {params.min_confidence} \
-            --log {log}
+            --log {log} \
+            > {log} 2>&1
         """
