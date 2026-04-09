@@ -63,6 +63,18 @@ benchmarks/
 */kofam/
 merged/
 
+# test/ 目录下测试生成的产物
+test/*.tsv
+test/*_highconf.tsv
+test/*_multi_KO_genes.tsv
+test/*_report.txt
+test/*.emapper.*
+test/*.ko
+test/*.ko_annotation*
+test/temp/
+test/.python-version
+test/*.log
+
 # 注释数据库文件 - 大型数据集
 dataset/
 
