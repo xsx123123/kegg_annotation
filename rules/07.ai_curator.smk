@@ -31,8 +31,9 @@ rule ai_annotation_curator:
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2"),
         api_key = lambda wc: config.get("ai", {}).get("api_key", ""),
         api_base = lambda wc: config.get("ai", {}).get("api_base", ""),
-        taxonomy = lambda wc: config.get("ai", {}).get("taxonomy", "Unknown"),
+        taxonomy = lambda wc: config.get("taxonomy") or config.get("ai", {}).get("taxonomy", "Unknown"),
         max_proteins = lambda wc: config.get("ai", {}).get("max_proteins", 50),
+        no_auto_filter = lambda wc: "--no-auto-filter" if config.get("ai", {}).get("no_auto_filter", False) else "",
         # 将脚本路径作为参数传递
         ai_curator_script = AI_CURATOR
     conda:
@@ -46,7 +47,7 @@ rule ai_annotation_curator:
     shell:
         """
         # 构建基础命令
-        CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --output-json {output.json} --provider {params.provider} --model {params.model} --taxonomy '{params.taxonomy}' --max-proteins {params.max_proteins}"
+        CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --output-json {output.json} --provider {params.provider} --model {params.model} --taxonomy '{params.taxonomy}' --max-proteins {params.max_proteins} {params.no_auto_filter}"
         
         # 追加 API key 和 API base 参数
         if [ -n "{params.api_key}" ]; then

@@ -91,6 +91,15 @@ ai:
   provider: "ollama"          # 可选: ollama, openai, claude
   model: "llama3.2"           # 模型名称
   
+  # 物种分类信息（用于 AI 判断注释的物种合理性，避免跨域错误注释）
+  # 示例: "Bacteria;Firmicutes;Bacillales"
+  # 示例: "Viridiplantae;Streptophyta;Embryophyta" （植物）
+  # taxonomy: "Unknown"
+  
+  # AI 评估策略
+  # max_proteins: 50           # 最大评估蛋白数（默认 50）
+  # no_auto_filter: false      # true = 所有蛋白都送 AI；false = 仅模糊区域送 AI
+  
   # API 密钥配置（🔒 安全方式 - 使用环境变量名）：
   # 正确做法 ✅: 只写环境变量名，真实 key 通过 export 设置
   # api_key: "AI_API_KEY"      # 脚本会读取 $AI_API_KEY 环境变量

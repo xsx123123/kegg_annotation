@@ -8,4 +8,17 @@ ai:
   provider: "openai"      # 可选: ollama, openai, claude
   model: "glm-4.7"        # minimax-m2.5,glm-4.7,doubao-seed-2.0-pro,deepseek-v3.2,kimi-k2.5
   api_key: ARK_API_KEY    # API 密钥（建议通过环境变量 AI_API_KEY 设置）
-  api_base: "https://ark.cn-beijing.volces.com/api/coding/v3" 
+  api_base: "https://ark.cn-beijing.volces.com/api/coding/v3"
+  
+  # 物种分类信息（用于 AI 判断注释的物种合理性）
+  # 示例: "Bacteria;Firmicutes;Bacillales"
+  # 示例: "Viridiplantae;Streptophyta;Embryophyta" （植物）
+  taxonomy: "Unknown"
+  
+  # AI 评估最大蛋白数（仅针对模糊区域生效；当 no_auto_filter=true 时限制总评估数）
+  max_proteins: 50
+  
+  # 是否关闭分层筛选（默认 false）
+  # false: 高置信/低质量由规则直接判定，只有模糊区域送 AI（省 token）
+  # true : 所有蛋白都送 AI 评估（更精细，但 token 消耗高）
+  no_auto_filter: false
