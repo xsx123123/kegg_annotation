@@ -32,6 +32,6 @@ rule integrate_annotations:
             -e {input.eggnog} \
             -k {input.kofam} \
             -s {wildcards.sample} \
-            -o 03.merge/{wildcards.sample}_integrated \
+            -o 03.merge/{wildcards.sample} \
             > {log} 2>&1
         """
