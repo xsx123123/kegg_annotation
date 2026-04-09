@@ -1,0 +1,3 @@
+query	seed_ortholog	evalue	score	KO	Description	EC	confidence_level	confidence_score	confidence_reason	kofam_threshold	pass_threshold	total_hits	significant_hits
+gene_1	K04526	1.8e-35	110.7	K04526	insulin	-	High	95	Pass threshold, unique significant hit	81.87	True	8	1
+gene_3	K16141	4.7e-302	991.5	K16141	serum albumin	-	High	95	Pass threshold, unique significant hit	864.47	True	6	1

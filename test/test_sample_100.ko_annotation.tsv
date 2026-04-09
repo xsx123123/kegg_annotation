@@ -1,0 +1,6 @@
+query	seed_ortholog	evalue	score	KO	Description	EC	confidence_level	confidence_score	confidence_reason	kofam_threshold	pass_threshold	total_hits	significant_hits
+gene_1	K04526	1.8e-35	110.7	K04526	insulin	-	High	95	Pass threshold, unique significant hit	81.87	True	8	1
+gene_2	K18245	1.2e-43	137.9	K18245	carbonic anhydrase 2	4.2.1.1	Medium	75	High score but close to other hits (ambiguous)	422.23	False	6	0
+gene_3	K16141	4.7e-302	991.5	K16141	serum albumin	-	High	95	Pass threshold, unique significant hit	864.47	True	6	1
+gene_4	K06546	7.2e-09	24.1	K06546	CD164 antigen	-	Low	40	Low score or high e-value	81.2	False	45	0
+gene_5	K08289	0.0027	4.9	K08289	phosphoribosylglycinamide formyltransferase 2	6.3.1.21	Low	40	Low score or high e-value	263.97	False	4	0
