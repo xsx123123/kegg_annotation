@@ -1,15 +1,17 @@
 # KEGG Annotation Pipeline
 
-基于 eggnog-mapper 和 KofamScan 的基因功能注释流程，提供质量过滤和可信度评估。
+基于 eggnog-mapper 和 KofamScan 的基因功能注释流程，提供质量过滤、可信度评估、结果整合和 AI 驱动的逐蛋白可靠性分析。
 
 ## 项目特点
 
-- ✅ **模块化设计**: 使用 Snakemake 管理分析流程，支持灵活配置
+- ✅ **模块化设计**: 使用 Snakemake 管理分析流程，规则按步骤编号（01-08），结构清晰
 - ✅ **质量过滤**: 基于 E-value、Bit-score 等多维度过滤
 - ✅ **可信度评估**: 三级可信度分级 (High/Medium/Low)，0-100分评分体系
-- ✅ **结果合并**: 支持多样本结果合并，便于下游分析
+- ✅ **结果整合**: 对 eggnog 和 KofamScan 结果进行横向整合与冲突裁决
+- ✅ **多样本合并**: 支持多样本结果合并，便于下游分析
 - ✅ **Conda 环境**: 自动管理依赖环境，保证可重复性
-- ✅ **AI 驱动分析**: 支持 AI 注释质量评估和功能解读（Ollama/OpenAI/Claude）
+- ✅ **AI 驱动分析**: 支持逐蛋白可靠性评估（Ollama/OpenAI/Claude），含分层筛选与 Token 消耗追踪
+- ✅ **灵活输入**: 支持 `.pep`、`.fa`、`.fasta`、`.faa`、`.protein` 及复合扩展名（如 `.fa.TD2.1k.pep`）
 
 ---
 
@@ -18,26 +20,37 @@
 ```
 .
 ├── snakefile                 # 主工作流文件
-├── config.yaml              # 示例配置文件（详细说明）
+├── config.yaml              # 示例配置文件
 ├── conf/
-│   └── config.yaml          # 生产配置文件（实际使用）
-├── rules/                   # Snakemake 规则目录
-│   ├── config.smk          # 全局配置
-│   ├── common.smk          # 通用规则
-│   ├── eggnog.smk          # eggnog 分析规则
-│   ├── kofamscan.smk       # KofamScan 分析规则
-│   ├── report.smk          # 报告生成规则
-│   └── merge.smk           # 结果合并规则
+│   ├── config.yaml          # 生产配置
+│   ├── resource.yaml        # 资源配置
+│   ├── parameter.yaml       # 参数配置
+│   └── ai.yaml              # AI 配置
+├── rules/                   # Snakemake 规则目录（按步骤编号）
+│   ├── 01.common.smk       # 通用规则与辅助函数
+│   ├── 02.config.smk       # 全局配置变量
+│   ├── 03.eggnog.smk       # eggnog-mapper 分析规则
+│   ├── 04.kofamscan.smk    # KofamScan 分析规则
+│   ├── 05.integrate.smk    # eggnog + KofamScan 整合评分
+│   ├── 06.merge.smk        # 多样本结果合并
+│   ├── 07.ai_curator.smk   # AI 逐蛋白评估
+│   └── 08.report.smk       # 报告生成规则
 ├── env/                     # Conda 环境配置
 │   ├── eggnog-mapper.yaml
-│   └── kofamscan.yaml
+│   ├── kofamscan.yaml
+│   ├── python3.yaml
+│   └── openai.yaml
 ├── scripts/                 # Python 处理脚本
 │   ├── eggnog_processor.py
 │   ├── KofamScan_processor.py
-│   └── merge_results.py
+│   ├── integrate_annotations.py
+│   ├── merge_results.py
+│   └── ai_curator.py
+├── docs/                    # 文档
+│   └── filtering_standards.md   # 过滤与可信度评估标准详解
 ├── dataset/                 # 数据库目录
-│   ├── eggnog-mapper/      # eggnog 数据库
-│   └── kegg_*_ko_dataset/  # KofamScan 数据库
+│   ├── eggnog-mapper/
+│   └── kegg_*_ko_dataset/
 └── test/                    # 测试数据
     └── test_sample_100.pep
 ```
@@ -51,7 +64,7 @@
 确保已安装 [Snakemake](https://snakemake.readthedocs.io/) 和 [Conda](https://docs.conda.io/) (推荐 Miniconda):
 
 ```bash
-# 安装 Snakemake
+# 安装 Snakemake (需 9.9.0+)
 conda install -n base -c conda-forge -c bioconda snakemake
 ```
 
@@ -63,6 +76,7 @@ cp config.yaml conf/config.yaml
 
 # 编辑生产配置
 vim conf/config.yaml
+vim conf/ai.yaml  # 如需启用 AI 分析
 ```
 
 ### 3. 运行分析
@@ -71,8 +85,8 @@ vim conf/config.yaml
 # 运行完整流程（会自动创建 conda 环境）
 snakemake --use-conda --cores 8
 
-# 查看帮助
-snakemake --help
+# 查看执行计划（不实际运行）
+snakemake --use-conda --cores 8 -n
 ```
 
 ---
@@ -84,14 +98,13 @@ snakemake --help
 配置文件 `conf/config.yaml` 包含以下主要参数：
 
 ```yaml
-# 样本配置
+# 样本配置（支持复合扩展名，如 rnabloom_transcript_LongOrfs.fa.TD2.1k.pep）
 samples:
   - test_sample_100
-  - sample2
-  - sample3
+  - rnabloom_transcript_LongOrfs
 
 input_dir: "./test"        # 输入序列目录
-output_dir: "./results"    # 输出结果目录
+output_dir: "./results"    # 输出结果目录（当前版本主要作为配置保留，实际输出按步骤目录存放）
 
 # eggnog-mapper 配置
 eggnog_data_dir: "./dataset/eggnog-mapper"
@@ -116,24 +129,26 @@ require_go: false              # 要求有 GO 注释
 # 1. 运行完整流程
 snakemake --use-conda --cores 8
 
-# 2. 仅运行 eggnog 流程（跳过 KofamScan）
-snakemake --use-conda --cores 8 eggnog_only
+# 2. 仅运行注释步骤（跳过合并和 AI）
+snakemake --use-conda --cores 8 annotate
 
-# 3. 处理已有的 eggnog 结果（不重新运行 eggnog-mapper）
-snakemake --use-conda --cores 4 process_existing_eggnog
+# 3. 仅运行 AI 分析（已有注释结果时）
+snakemake --use-conda --cores 8 ai_analysis
 
-# 4. 只保留高可信度 + KEGG 注释的结果
+# 4. 仅合并多样本结果
+snakemake --use-conda --cores 4 merge
+
+# 5. 只保留高可信度 + KEGG 注释的结果
 snakemake --use-conda --cores 4 \
-    --config min_confidence=High require_kegg=true \
-    high_confidence_only
+    --config min_confidence=High require_kegg=true
 
-# 5. 强制重新运行（删除旧结果后重跑）
+# 6. 强制重新运行（删除旧结果后重跑）
 snakemake --use-conda --cores 8 --forceall
 
-# 6. 试运行（不实际执行，查看执行计划）
+# 7. 试运行（不实际执行，查看执行计划）
 snakemake --use-conda --cores 8 -n
 
-# 7. 生成有向无环图（DAG）
+# 8. 生成有向无环图（DAG）
 snakemake --dag | dot -Tpng > dag.png
 ```
 
@@ -155,49 +170,71 @@ snakemake --use-conda --cores 8 \
 ### 流程图
 
 ```
-输入序列 (.pep/.fa)
+输入序列 (.pep/.fa/.fasta/.faa/.protein，支持复合扩展名)
     │
     ├── eggnog-mapper 流程 ─────────────────────────┐
     │    │                                           │
     │    ▼                                           │
-    │ .emapper.annotations                          │
+    │ 01.eggnog/{sample}.emapper.annotations        │
     │    │                                           │
     │    ▼                                           │
     │ eggnog_processor.py                           │
     │    │                                           │
     │    ▼                                           │
-    │ _eggnog_formatted.tsv                         │
-    │ _eggnog_high_confidence.tsv                   │
+    │ 01.eggnog/{sample}_eggnog.tsv                 │
+    │ 01.eggnog/{sample}_eggnog_highconf.tsv        │
     │                                                │
     ├── KofamScan 流程 ─────────────────────────────┤
     │    │                                           │
     │    ▼                                           │
-    │ _kofam_detail.txt                             │
+    │ 02.kofam/{sample}_kofam_detail.txt            │
     │    │                                           │
     │    ▼                                           │
     │ KofamScan_processor.py                        │
     │    │                                           │
     │    ▼                                           │
-    │ _kofam_formatted.tsv                          │
-    │ _kofam_high_confidence.tsv                    │
+    │ 02.kofam/{sample}_kofam.tsv                   │
+    │ 02.kofam/{sample}_kofam_highconf.tsv          │
     │                                                │
-    └── 结果合并 ───────────────────────────────────┘
+    ├── 整合评分流程 ───────────────────────────────┤
+    │    │                                           │
+    │    ▼                                           │
+    │ integrate_annotations.py                      │
+    │    │                                           │
+    │    ▼                                           │
+    │ 03.merge/{sample}_integrated.tsv              │
+    │ 03.merge/{sample}_integrated_report.txt       │
+    │                                                │
+    ├── 结果合并 ───────────────────────────────────┤
+    │    │                                           │
+    │    ▼                                           │
+    │ merge_results.py                              │
+    │    │                                           │
+    │    ▼                                           │
+    │ 03.merge/eggnog_all_samples.tsv               │
+    │ 03.merge/kofam_all_samples.tsv                │
+    │ 03.merge/SUMMARY_REPORT.txt                   │
+    │                                                │
+    └── AI 逐蛋白评估 ──────────────────────────────┘
          │
          ▼
-    merged/eggnog_all_samples.tsv
-    merged/kofam_all_samples.tsv
-    merged/ALL_SAMPLES_SUMMARY_REPORT.txt
+    04.ai/{sample}_ai_report.md
+    04.ai/{sample}_ai_analysis.json
+    04.ai/AI_MULTI_SAMPLE_SUMMARY.md
 ```
 
 ### 各步骤说明
 
-| 步骤 | 工具 | 输入 | 输出 | 说明 |
-|------|------|------|------|------|
-| 1 | eggnog-mapper | protein sequences | .annotations | 功能注释 |
-| 2 | eggnog_processor | .annotations | _formatted.tsv | 质量过滤和可信度评估 |
-| 3 | KofamScan | protein sequences | _detail.txt | KO 注释 |
-| 4 | KofamScan_processor | _detail.txt | _formatted.tsv | 可信度评估 |
-| 5 | merge_results | 各样本结果 | merged/*.tsv | 多样本合并 |
+| 步骤 | 规则文件 | 工具 | 输入 | 输出 | 说明 |
+|------|---------|------|------|------|------|
+| 1 | 03.eggnog.smk | eggnog-mapper | protein sequences | 01.eggnog/*.annotations | 功能注释 |
+| 2 | 03.eggnog.smk | eggnog_processor | .annotations | 01.eggnog/*_eggnog.tsv | 质量过滤和可信度评估 |
+| 3 | 04.kofamscan.smk | KofamScan | protein sequences | 02.kofam/*_kofam_detail.txt | KO 注释 |
+| 4 | 04.kofamscan.smk | KofamScan_processor | _detail.txt | 02.kofam/*_kofam.tsv | 可信度评估 |
+| 5 | 05.integrate.smk | integrate_annotations | eggnog + kofam TSV | 03.merge/*_integrated.tsv | 横向整合与冲突裁决 |
+| 6 | 06.merge.smk | merge_results | 各样本结果 | 03.merge/*.tsv | 多样本合并与统计 |
+| 7 | 07.ai_curator.smk | ai_curator | eggnog + kofam TSV | 04.ai/*_ai_report.md | 逐蛋白 AI 可靠性评估 |
+| 8 | 08.report.smk | shell | 各步骤结果 | 03.merge/*_summary.txt | 样本摘要报告 |
 
 ---
 
@@ -206,34 +243,46 @@ snakemake --use-conda --cores 8 \
 ### 输出文件结构
 
 ```
-results/
-├── {sample}/                          # 单样本结果目录
-│   ├── {sample}.emapper.annotations   # eggnog 原始输出
-│   ├── {sample}.emapper.hits          # 比对详情
-│   ├── {sample}.emapper.seed_orthologs
-│   ├── {sample}_eggnog_formatted.tsv  # 处理后的 eggnog 结果 ⭐
-│   ├── {sample}_eggnog_high_confidence.tsv  # 高可信度子集 ⭐
-│   ├── {sample}_eggnog_report.txt     # 处理报告
-│   ├── {sample}_kofam_detail.txt      # KofamScan 原始输出
-│   ├── {sample}_kofam_formatted.tsv   # 处理后的 Kofam 结果
-│   └── {sample}_kofam_high_confidence.tsv
-│
-└── merged/                              # 多样本合并结果
-    ├── eggnog_all_samples.tsv          # eggnog 合并结果 ⭐⭐
-    ├── eggnog_high_confidence.tsv      # eggnog 高可信度合并
-    ├── eggnog_summary_stats.txt        # 统计报告
-    └── ALL_SAMPLES_SUMMARY_REPORT.txt  # 整体汇总报告
+01.eggnog/                          # eggnog-mapper 结果目录
+├── {sample}.emapper.annotations   # eggnog 原始输出
+├── {sample}.emapper.hits          # 比对详情
+├── {sample}.emapper.seed_orthologs
+├── {sample}_eggnog.tsv            # 处理后的 eggnog 结果 ⭐
+├── {sample}_eggnog_highconf.tsv   # 高可信度子集 ⭐
+└── {sample}_eggnog_report.txt     # 处理报告
+
+02.kofam/                           # KofamScan 结果目录
+├── {sample}_kofam_detail.txt      # KofamScan 原始输出
+├── {sample}_kofam_raw.tsv         # mapper 格式原始输出
+├── {sample}_kofam.tsv             # 处理后的 Kofam 结果
+├── {sample}_kofam_highconf.tsv    # 高可信度子集
+└── {sample}_kofam_report.txt      # 处理报告
+
+03.merge/                           # 整合与合并结果目录
+├── {sample}_integrated.tsv        # 单样本整合结果
+├── {sample}_integrated_report.txt # 整合评分报告
+├── {sample}_summary.txt           # 单样本摘要报告
+├── eggnog_all_samples.tsv         # eggnog 多样本合并 ⭐⭐
+├── eggnog_highconf.tsv            # eggnog 高可信度合并
+├── kofam_all_samples.tsv          # kofam 多样本合并
+├── kofam_highconf.tsv             # kofam 高可信度合并
+└── SUMMARY_REPORT.txt             # 整体汇总报告
+
+04.ai/                              # AI 分析结果目录
+├── {sample}_ai_report.md          # AI 逐蛋白评估报告（Markdown）
+├── {sample}_ai_analysis.json      # 结构化评估数据（JSON）
+└── AI_MULTI_SAMPLE_SUMMARY.md     # 多样本 AI 汇总
 ```
 
 ### 结果文件格式
 
-#### 1. `{sample}_eggnog_formatted.tsv`
+#### 1. `{sample}_eggnog.tsv`
 
 主结果文件，包含完整的注释信息和可信度评估：
 
 | 列名 | 说明 | 示例 |
 |------|------|------|
-| query | 查询序列 ID | rb_2.p2 |
+| query | 查询序列 ID | gene_1 |
 | seed_ortholog | 最佳匹配的种子同源基因 | 71139.XP_010029570.1 |
 | evalue | E-value（越小越好）| 1.58e-168 |
 | score | Bit-score（越大越好）| 485.0 |
@@ -244,16 +293,15 @@ results/
 | kegg_pathway | KEGG 通路 | ko03030,map03030 |
 | gos | GO 注释 | GO:0003674,GO:0005215 |
 | ec | EC 编号 | 1.8.4.12 |
-| pfams | Pfam 结构域 | Mem_trans |
 | **confidence_level** | 可信度等级 | High/Medium/Low |
 | **confidence_score** | 可信度分数 (0-100) | 95 |
 | **confidence_reason** | 可信度说明 | High quality annotation |
 
-#### 2. `{sample}_eggnog_high_confidence.tsv`
+#### 2. `{sample}_eggnog_highconf.tsv`
 
 高可信度子集，只包含 confidence_level = "High" 的记录，格式同上。
 
-#### 3. `merged/eggnog_all_samples.tsv`
+#### 3. `03.merge/eggnog_all_samples.tsv`
 
 多样本合并结果，**新增 sample 列**标识样本来源：
 
@@ -262,6 +310,21 @@ results/
 | sample1 | gene1 | 1e-100 | 200 | ko:K00001 | High |
 | sample1 | gene2 | 1e-50 | 150 | ko:K00002 | Medium |
 | sample2 | gene1 | 1e-120 | 250 | ko:K00001 | High |
+
+#### 4. `03.merge/{sample}_integrated.tsv`
+
+整合评分结果，同时包含 eggNOG 和 KofamScan 的字段，以及综合评分：
+
+| 列名 | 说明 |
+|------|------|
+| query | 蛋白 ID |
+| integrated_ko | 最终选定的 KO |
+| ko_agreement | agree / conflict / single_source |
+| integrated_score | 综合评分 (0-100) |
+| integrated_level | High / Medium / Low |
+| eggnog_kegg_ko | eggNOG 的 KO |
+| kofam_ko | KofamScan 的 KO |
+| ... | 其余 eggnog + kofam 原始字段 |
 
 ### 统计报告解读
 
@@ -295,11 +358,17 @@ Annotation Coverage:
 
 #### 可信度评分标准
 
-| 指标 | 优秀 | 良好 | 达标 | 一般 | 较差 |
-|------|------|------|------|------|------|
-| **E-value** | ≤1e-20 (40分) | ≤1e-10 (35分) | ≤1e-5 (30分) | ≤0.001 (20分) | ≤0.01 (10分) |
-| **Bit-score** | ≥200 (30分) | ≥100 (25分) | ≥60 (20分) | ≥40 (10分) | <40 (0分) |
-| **注释丰富度** | ≥4类 (30分) | 3类 (25分) | 2类 (20分) | 1类 (10分) | 0类 (0分) |
+详见 `docs/filtering_standards.md`。简要如下：
+
+**eggnog_processor**（0-100分）
+- E-value 评分（0-40分）
+- Bit-score 评分（0-30分）
+- 注释完整性评分（0-30分，基于 GO/KO/EC/Pfam/CAZy）
+
+**KofamScan_processor**（40-95分）
+- High：通过阈值（`*`）且 score ≥ threshold
+- Medium：未过阈值但 score > 100 或 evalue < 1e-20
+- Low：score < 60 或 evalue > 1e-5
 
 | 等级 | 总分范围 | 说明 | 建议 |
 |------|----------|------|------|
@@ -317,12 +386,11 @@ Annotation Coverage:
 
 **运行命令**:
 ```bash
-# 单样本分析
+# 单样本完整分析
 snakemake --use-conda --cores 4 \
     --config samples=["test_sample_100"] \
              min_confidence=High \
-             require_kegg=true \
-    results/test_sample_100/test_sample_100_eggnog_formatted.tsv
+             require_kegg=true
 ```
 
 **分析结果**:
@@ -336,14 +404,6 @@ snakemake --use-conda --cores 4 \
 | 有 KEGG | 63 (100%) | 都有 KO 编号 |
 | 有 GO | 43 (68.3%) | 大部分有 GO |
 
-**代表性注释结果**:
-
-| 基因 | E-value | Score | KO | 功能描述 | 可信度 |
-|------|---------|-------|-----|----------|--------|
-| rb_13.p3 | 0.0 | 1486 | K11450 | 组蛋白去甲基化酶 | High/95 |
-| rb_18.p1 | 6.2e-189 | 578 | K12854 | U5 snRNP 200kDa | High/90 |
-| rb_44.p1 | 8.6e-110 | 348 | K01652 | C2结构域蛋白 | High/85 |
-
 ---
 
 ## 脚本独立使用
@@ -353,8 +413,8 @@ snakemake --use-conda --cores 4 \
 ```bash
 # 基本用法
 python3 scripts/eggnog_processor.py \
-    -i results/test_sample_100/test_sample_100.emapper.annotations \
-    -o test_output
+    -i 01.eggnog/test_sample_100.emapper.annotations \
+    -o 01.eggnog/test_sample_100_eggnog
 
 # 高可信度 + KEGG 过滤
 python3 scripts/eggnog_processor.py \
@@ -371,32 +431,63 @@ python3 scripts/eggnog_processor.py \
     --bitscore 80
 ```
 
+### KofamScan_processor.py
+
+```bash
+python3 scripts/KofamScan_processor.py \
+    -i 02.kofam/test_sample_100_kofam_detail.txt \
+    -o 02.kofam/test_sample_100_kofam \
+    -e 01.eggnog/test_sample_100.emapper.annotations \
+    --min-confidence High
+```
+
+### integrate_annotations.py
+
+```bash
+python3 scripts/integrate_annotations.py \
+    -e 01.eggnog/test_sample_100_eggnog.tsv \
+    -k 02.kofam/test_sample_100_kofam.tsv \
+    -s test_sample_100 \
+    -o 03.merge/test_sample_100
+```
+
 ### merge_results.py
 
 ```bash
-# 合并多个样本结果
+# 合并 eggnog 结果
 python3 scripts/merge_results.py \
-    --input-dir results \
+    --input-dir 01.eggnog \
     --samples sample1 sample2 sample3 \
     --tool eggnog \
-    --output-all merged/eggnog_all.tsv \
-    --output-high merged/eggnog_high.tsv \
-    --output-stats merged/stats.txt
+    --output-all 03.merge/eggnog_all.tsv \
+    --output-high 03.merge/eggnog_high.tsv \
+    --output-stats 03.merge/eggnog_stats.txt
+
+# 合并 kofam 结果
+python3 scripts/merge_results.py \
+    --input-dir 02.kofam \
+    --samples sample1 sample2 sample3 \
+    --tool kofam \
+    --output-all 03.merge/kofam_all.tsv \
+    --output-high 03.merge/kofam_high.tsv \
+    --output-stats 03.merge/kofam_stats.txt
 ```
 
 ---
 
 ## AI 注释分析功能
 
-KEGG Annotation Pipeline 现在支持 AI 驱动的注释质量评估和功能解读！
+KEGG Annotation Pipeline 支持 AI 驱动的**逐蛋白可靠性评估**，而非仅样本级汇总统计。
 
 ### 功能特点
 
-- **智能质量评估**: AI 自动评估注释结果的可靠性和完整性
-- **功能摘要生成**: 自动撰写样本的功能特征描述
-- **问题识别**: 发现潜在的注释冲突和低质量结果
-- **改进建议**: 提供针对性的分析优化建议
-- **通路解读**: 对关键生物学通路进行智能解读
+- **逐蛋白可靠性评估**: 对每条蛋白分别评估 eggNOG 和 KofamScan 的可靠性
+- **物种合理性判断**: 结合 `taxonomy` 参数，判断注释功能对该物种是否合理
+- **Tax_scope 精确度检查**: 评估 eggNOG `tax_scope` 与物种分类的匹配层级
+- **KofamScan 阈值比值解读**: 结合 KO 类型（管家基因 vs 稀有基因）判断 ratio 可信度
+- **工具一致性检测**: 自动标记 eggNOG 与 KofamScan 的 KO 冲突
+- **分层筛选降本**: 高置信/低质量两端由规则直接判定，仅模糊区域送 AI
+- **Token 消耗追踪**: 自动统计 prompt/completion/total tokens，便于成本控制
 
 ### 支持的 AI 提供商
 
@@ -423,14 +514,16 @@ curl http://localhost:11434/api/tags
 
 #### 2. 启用 AI 分析
 
-编辑 `conf/config.yaml`:
+编辑 `conf/ai.yaml`:
 
 ```yaml
 ai:
   enabled: true
   provider: "ollama"
   model: "llama3.2"
-  # api_base: "http://localhost:11434"  # 可选：自定义端点
+  taxonomy: "Bacteria;Firmicutes;Bacillales"  # 你的物种分类
+  max_proteins: 50                              # 仅对模糊区域最多评估 50 个蛋白
+  # api_base: "http://localhost:11434"         # 可选：自定义端点
 ```
 
 #### 3. 运行分析
@@ -439,8 +532,8 @@ ai:
 # 运行完整流程（包含 AI 分析）
 snakemake --use-conda --cores 8
 
-# 或仅运行 AI 分析（已有注释结果）
-snakemake --use-conda --config ai.enabled=true ai_analysis
+# 或仅运行 AI 分析（已有注释结果时）
+snakemake --use-conda --cores 8 ai_analysis
 ```
 
 ### 输出结果
@@ -448,13 +541,44 @@ snakemake --use-conda --config ai.enabled=true ai_analysis
 AI 分析会生成以下文件：
 
 ```
-results/
-├── {sample}/
-│   ├── {sample}_ai_report.md          # AI 分析报告（Markdown）
-│   └── {sample}_ai_analysis.json      # 结构化数据（JSON）
-└── merged/
-    └── AI_MULTI_SAMPLE_SUMMARY.md     # 多样本汇总（多样本时）
+04.ai/
+├── {sample}_ai_report.md          # AI 逐蛋白评估报告（Markdown）⭐
+├── {sample}_ai_analysis.json      # 结构化评估数据（JSON）⭐
+└── AI_MULTI_SAMPLE_SUMMARY.md     # 多样本汇总（多样本时）
 ```
+
+#### AI 报告内容示例
+
+```markdown
+# AI 注释分析报告（逐蛋白评估）
+
+## 处理策略与 Token 消耗
+- 规则直接判定: 230 个蛋白（不消耗 token）
+- AI 实际评估: 50 个蛋白
+- Total tokens: 184,320
+
+## 整体质量汇总
+- High confidence: 42 (14.0%)
+- Medium confidence: 28 (9.3%)
+- Low confidence: 8 (2.7%)
+- Cross-tool conflicts: 5
+
+## 潜在问题蛋白（Top 20）
+- `gene_23` | Overall: Low | Action: Reject | Source: AI | Flags: Eukaryota tax_scope in bacteria
+...
+```
+
+### 分层筛选策略说明
+
+为控制 Token 成本，`ai_curator.py` 默认开启**分层筛选**（可用 `--no-auto-filter` 关闭）：
+
+| 分类 | 判定标准 | 处理方式 | Token 消耗 |
+|------|----------|----------|-----------|
+| **高置信** | `e-value < 1e-10` **且** `Kofam ratio > 1.5` | 规则直接 `Accept` | 0 |
+| **低质量** | `e-value > 1e-3` **或** `Kofam ratio < 0.5` | 规则直接 `Reject` | 0 |
+| **模糊区域** | 其余蛋白 | 送 AI 评估 | 有 |
+
+这意味着对于一个 3000 蛋白的基因组，可能只有 300-600 个蛋白进入模糊区域，再按 `--max-proteins` 限制后，实际 API 调用可能只有几十个，大幅降低成本。
 
 ---
 
@@ -483,11 +607,6 @@ export AI_API_KEY="sk-your-actual-api-key"
 # 方式 2：写入 ~/.bashrc 或 ~/.zshrc（长期有效）
 echo 'export AI_API_KEY="sk-your-actual-api-key"' >> ~/.bashrc
 source ~/.bashrc
-
-# 方式 3：使用 .env 文件（需要 dotenv 工具）
-# 创建 .env 文件（确保 .gitignore 包含 .env）
-echo "AI_API_KEY=sk-your-actual-api-key" > .env
-source .env
 ```
 
 ##### 步骤 2：在配置中只写变量名
@@ -514,7 +633,7 @@ snakemake --use-conda --cores 8
 1. **配置文件安全**：脚本会检测 `api_key` 是否为全大写的环境变量名格式，如果是，从环境变量读取而非直接使用
 2. **命令行保护**：即使通过命令行传入 key，也会立即转移到环境变量，避免在 `ps` 进程列表中暴露
 3. **日志脱敏**：API key 不会出现在任何日志文件中，日志只显示 `长度: 32` 而非真实内容
-4. **Git 保护**：确保 `.gitignore` 包含 `.env` 和 `*.log`，防止意外提交敏感信息
+4. **Git 保护**：`.gitignore` 已包含 `.env`、`*.log`、`test/` 产物等，防止意外提交敏感信息
 
 ### 使用不同云平台
 
@@ -578,9 +697,9 @@ A: 确保在 `conf/config.yaml` 中正确设置了 `eggnog_data_dir`，且该目
 
 ### Q3: 如何只处理已有结果，不重新跑注释？
 
-A: 使用 `process_existing_eggnog` 规则：
+A: 已有 `01.eggnog/*.emapper.annotations` 后，可直接运行后续处理步骤：
 ```bash
-snakemake --use-conda --cores 4 process_existing_eggnog
+snakemake --use-conda --cores 4 annotate
 ```
 
 ### Q4: 如何调整过滤严格程度？
@@ -607,7 +726,24 @@ samples:
   - sample2
   - sample3
 ```
-运行后会自动生成 `results/merged/` 目录下的合并结果。
+运行 `snakemake --use-conda --cores 8` 后会自动生成 `03.merge/` 目录下的合并结果。
+
+### Q6: AI 分析为什么没有评估所有蛋白？
+
+A: 这是正常的成本控制设计。默认开启分层筛选：高置信和低质量蛋白由规则直接判定，只有模糊区域才送 AI。如需全量评估，在 `conf/ai.yaml` 中把 `max_proteins` 调大，或在命令行覆盖：
+```bash
+snakemake --use-conda --cores 4 --config ai.max_proteins=200 ai_analysis
+```
+（注意：全量评估会消耗大量 Token）
+
+### Q7: 输入文件名带复合扩展名（如 `.fa.TD2.1k.pep`）如何配置？
+
+A: `get_input_file()` 已支持复合扩展名。只需在 `samples` 中写基础名即可：
+```yaml
+samples:
+  - rnabloom_transcript_LongOrfs
+```
+系统会自动匹配 `rnabloom_transcript_LongOrfs.fa.TD2.1k.pep`。
 
 ---
 
@@ -619,17 +755,26 @@ samples:
 | Bit-score | ≥ 60 | ≥ 80 | 比对得分 |
 | Percentage identity | ≥ 40-50% | ≥ 70% | 序列同一性 |
 | Query coverage | ≥ 20% | ≥ 30% | 查询序列覆盖率 |
-| Subject coverage | ≥ 20% | ≥ 30% | 参考序列覆盖率 |
+| Subject coverage | ≥ 30% | ≥ 50% | 参考序列覆盖率 |
+
+---
+
+## 文档与参考
+
+- **过滤标准详解**: 见 `docs/filtering_standards.md`
+- **Snakemake 官方文档**: https://snakemake.readthedocs.io/
+- **eggnog-mapper 文档**: https://github.com/eggnogdb/eggnog-mapper
+- **KofamScan 文档**: https://www.genome.jp/tools/kofamkoala/
 
 ---
 
 ## 依赖
 
 - Python 3.8+
-- pandas
+- pandas, loguru, rich, requests
 - eggnog-mapper 2.1.13
 - KofamScan 1.3.0
-- Snakemake 7.0+
+- Snakemake 9.9.0+
 - Conda/Mamba
 
 ---
