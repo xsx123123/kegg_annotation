@@ -31,6 +31,8 @@ rule ai_annotation_curator:
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2"),
         api_key = lambda wc: config.get("ai", {}).get("api_key", ""),
         api_base = lambda wc: config.get("ai", {}).get("api_base", ""),
+        taxonomy = lambda wc: config.get("ai", {}).get("taxonomy", "Unknown"),
+        max_proteins = lambda wc: config.get("ai", {}).get("max_proteins", 50),
         # 将脚本路径作为参数传递
         ai_curator_script = AI_CURATOR
     conda:
@@ -43,13 +45,12 @@ rule ai_annotation_curator:
         "🤖 Running AI analysis on {wildcards.sample}"
     shell:
         """
-        # 构建基础命令（必须显式传入 --api-key / --api-base，否则脚本无法获知配置）
-        CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --provider {params.provider} --model {params.model}"
+        # 构建基础命令
+        CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --output-json {output.json} --provider {params.provider} --model {params.model} --taxonomy '{params.taxonomy}' --max-proteins {params.max_proteins}"
         
         # 追加 API key 和 API base 参数
         if [ -n "{params.api_key}" ]; then
             CMD="$CMD --api-key '{params.api_key}'"
-            # 如果直接是 key 而非环境变量名，额外导出到 AI_API_KEY 作为兜底
             if ! echo "{params.api_key}" | grep -qE '^[A-Z_]+$'; then
                 export AI_API_KEY="{params.api_key}"
             fi
@@ -63,19 +64,6 @@ rule ai_annotation_curator:
         
         # 执行命令
         eval $CMD > {log} 2>&1
-        
-        # 生成 JSON 输出
-        python3 -c "
-import json
-result = {{
-    'sample': '{wildcards.sample}',
-    'provider': '{params.provider}',
-    'model': '{params.model}',
-    'status': 'completed'
-}}
-with open('{output.json}', 'w') as f:
-    json.dump(result, f, indent=2)
-" >> {log} 2>&1
         """
 
 
