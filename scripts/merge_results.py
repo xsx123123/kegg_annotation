@@ -18,10 +18,9 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich import box
 
-# 配置 loguru
+# 配置 loguru（文件 handler 推迟到 main 中根据输出目录决定）
 logger.remove()
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
-logger.add("merge_results_{time}.log", rotation="10 MB", retention="1 week")
 
 # 创建 rich console
 console = Console()
@@ -286,6 +285,14 @@ def main():
     parser.add_argument('--output-stats', required=True, help='统计信息输出文件')
     
     args = parser.parse_args()
+    
+    # 根据输出目录配置日志文件
+    output_dir = os.path.dirname(args.output_all) or "."
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    output_name = os.path.basename(args.output_all)
+    log_path = os.path.join(output_dir, f"merge_results_{{time}}.log")
+    logger.add(log_path, rotation="10 MB", retention="1 week")
     
     # 启动信息
     console.print(Panel(
