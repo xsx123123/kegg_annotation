@@ -7,11 +7,11 @@ rule merge_eggnog_results:
     Merge eggnog results from all samples.
     """
     input:
-        expand("{sample}/{sample}_eggnog.tsv", sample=SAMPLES)
+        expand("01.eggnog/{sample}_eggnog.tsv", sample=SAMPLES)
     output:
-        all_samples = "merged/eggnog_all_samples.tsv",
-        high_conf = "merged/eggnog_highconf.tsv",
-        stats = "merged/eggnog_stats.txt"
+        all_samples = "03.merge/eggnog_all_samples.tsv",
+        high_conf = "03.merge/eggnog_highconf.tsv",
+        stats = "03.merge/eggnog_stats.txt"
     params:
         samples = " ".join(SAMPLES),
     conda:
@@ -19,17 +19,17 @@ rule merge_eggnog_results:
     resources:
         **rule_resource(config, 'default', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/merge_eggnog.log"
+        "logs/03.merge/merge_eggnog.log"
     benchmark:
-        "benchmarks/merge_eggnog.txt"
+        "benchmarks/03.merge/merge_eggnog.txt"
     message:
         "📦 Merging eggnog results | {params.samples}"
     shell:
         """
-        mkdir -p merged
+        mkdir -p 03.merge && \
         chmod +x "{MERGE_RESULTS}" && \
         python3 "{MERGE_RESULTS}" \
-            --input-dir . \
+            --input-dir 01.eggnog \
             --samples {params.samples} \
             --tool eggnog \
             --output-all {output.all_samples} \
@@ -43,11 +43,11 @@ rule merge_kofam_results:
     Merge KofamScan results from all samples.
     """
     input:
-        expand("{sample}/{sample}_kofam.tsv", sample=SAMPLES)
+        expand("02.kofam/{sample}_kofam.tsv", sample=SAMPLES)
     output:
-        all_samples = "merged/kofam_all_samples.tsv",
-        high_conf = "merged/kofam_highconf.tsv",
-        stats = "merged/kofam_stats.txt"
+        all_samples = "03.merge/kofam_all_samples.tsv",
+        high_conf = "03.merge/kofam_highconf.tsv",
+        stats = "03.merge/kofam_stats.txt"
     params:
         samples = " ".join(SAMPLES),
     conda:
@@ -55,17 +55,17 @@ rule merge_kofam_results:
     resources:
         **rule_resource(config, 'default', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/merge_kofam.log"
+        "logs/03.merge/merge_kofam.log"
     benchmark:
-        "benchmarks/merge_kofam.txt"
+        "benchmarks/03.merge/merge_kofam.txt"
     message:
         "📦 Merging KofamScan results | {params.samples}"
     shell:
         """
-        mkdir -p merged
+        mkdir -p 03.merge && \
         chmod +x "{MERGE_RESULTS}" && \
         python3 "{MERGE_RESULTS}" \
-            --input-dir . \
+            --input-dir 02.kofam \
             --samples {params.samples} \
             --tool kofam \
             --output-all {output.all_samples} \
@@ -79,18 +79,18 @@ rule merge_summary_report:
     Generate comprehensive summary report.
     """
     input:
-        eggnog_stats = "merged/eggnog_stats.txt",
-        kofam_stats = "merged/kofam_stats.txt"
+        eggnog_stats = "03.merge/eggnog_stats.txt",
+        kofam_stats = "03.merge/kofam_stats.txt"
     output:
-        report = "merged/SUMMARY_REPORT.txt"
+        report = "03.merge/SUMMARY_REPORT.txt"
     params:
         samples = " ".join(SAMPLES)
     resources:
         **rule_resource(config, 'low_resource', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/merge_summary.log"
+        "logs/03.merge/merge_summary.log"
     benchmark:
-        "benchmarks/merge_summary.txt"
+        "benchmarks/03.merge/merge_summary.txt"
     message:
         "📝 Generating summary report"
     shell:
@@ -115,7 +115,7 @@ EOF
         echo "" >> {output.report}
         echo "================================================================================" >> {output.report}
         echo "Output Files:" >> {output.report}
-        echo "  - merged/eggnog_all_samples.tsv" >> {output.report}
-        echo "  - merged/kofam_all_samples.tsv" >> {output.report}
+        echo "  - 03.merge/eggnog_all_samples.tsv" >> {output.report}
+        echo "  - 03.merge/kofam_all_samples.tsv" >> {output.report}
         echo "================================================================================" >> {output.report}
         """

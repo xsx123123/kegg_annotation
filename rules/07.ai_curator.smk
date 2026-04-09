@@ -21,11 +21,11 @@ rule ai_annotation_curator:
     的注释结果进行综合分析，生成质量评估和功能摘要。
     """
     input:
-        eggnog = "{sample}/{sample}_eggnog.tsv",
-        kofam = "{sample}/{sample}_kofam.tsv"
+        eggnog = "01.eggnog/{sample}_eggnog.tsv",
+        kofam = "02.kofam/{sample}_kofam.tsv"
     output:
-        report = "{sample}/{sample}_ai_report.md",
-        json = "{sample}/{sample}_ai_analysis.json"
+        report = "04.ai/{sample}_ai_report.md",
+        json = "04.ai/{sample}_ai_analysis.json"
     params:
         provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2"),
@@ -36,9 +36,9 @@ rule ai_annotation_curator:
     conda:
         workflow.source_path("../env/openai.yaml")
     log:
-        "logs/{sample}_ai_curator.log"
+        "logs/04.ai/{sample}_ai_curator.log"
     benchmark:
-        "benchmarks/{sample}_ai_curator.txt"
+        "benchmarks/04.ai/{sample}_ai_curator.txt"
     message:
         "🤖 Running AI analysis on {wildcards.sample}"
     shell:
@@ -86,24 +86,24 @@ rule ai_multi_sample_summary:
     比较多个样本的注释结果，识别共性和差异。
     """
     input:
-        ai_reports = expand("{sample}/{sample}_ai_report.md", sample=SAMPLES) if AI_ENABLED else [],
-        eggnog_merged = "merged/eggnog_all_samples.tsv" if len(SAMPLES) > 1 and AI_ENABLED else [],
-        kofam_merged = "merged/kofam_all_samples.tsv" if len(SAMPLES) > 1 and AI_ENABLED else []
+        ai_reports = expand("04.ai/{sample}_ai_report.md", sample=SAMPLES) if AI_ENABLED else [],
+        eggnog_merged = "03.merge/eggnog_all_samples.tsv" if len(SAMPLES) > 1 and AI_ENABLED else [],
+        kofam_merged = "03.merge/kofam_all_samples.tsv" if len(SAMPLES) > 1 and AI_ENABLED else []
     output:
-        summary = "merged/AI_MULTI_SAMPLE_SUMMARY.md"
+        summary = "04.ai/AI_MULTI_SAMPLE_SUMMARY.md"
     params:
         samples = " ".join(SAMPLES),
         n_samples = len(SAMPLES),
         first_sample = SAMPLES[0] if SAMPLES else "",
-        first_report = f"{SAMPLES[0]}/{SAMPLES[0]}_ai_report.md" if SAMPLES else "",
+        first_report = f"04.ai/{SAMPLES[0]}_ai_report.md" if SAMPLES else "",
         provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2")
     conda:
         workflow.source_path("../env/openai.yaml")
     log:
-        "logs/ai_multi_sample_summary.log"
+        "logs/04.ai/ai_multi_sample_summary.log"
     benchmark:
-        "benchmarks/ai_multi_sample_summary.txt"
+        "benchmarks/04.ai/ai_multi_sample_summary.txt"
     message:
         "🤖 Generating multi-sample AI summary"
     shell:

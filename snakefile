@@ -56,15 +56,15 @@ logger.info(f"Redirect workspaces to {workflow_dir}")
 
 
 # --------- 4. Rules Import --------- #
-include: "rules/config.smk" # Global configuration definitions
-include: "rules/common.smk" # Common utilities and helper functions
-include: "rules/eggnog.smk" # eggnog-mapper annotation rules
-include: "rules/kofamscan.smk" # KofamScan annotation rules
-include: "rules/report.smk" # Report generation rules
-include: "rules/integrate.smk" # Integrate eggnog + KofamScan with scoring
-include: "rules/merge.smk" # Results merging rules
+include: "rules/02.config.smk" # Global configuration definitions
+include: "rules/01.common.smk" # Common utilities and helper functions
+include: "rules/03.eggnog.smk" # eggnog-mapper annotation rules
+include: "rules/04.kofamscan.smk" # KofamScan annotation rules
+include: "rules/05.integrate.smk" # Integrate eggnog + KofamScan with scoring
+include: "rules/06.merge.smk" # Results merging rules
+include: "rules/08.report.smk" # Report generation rules
 if AI_ENABLED:
-    include: "rules/ai_curator.smk" # AI curator rules (optional, loaded only if ai.enabled=true)
+    include: "rules/07.ai_curator.smk" # AI curator rules (optional, loaded only if ai.enabled=true)
 # --------- 5. Pipeline Initialization --------- #
 # Log pipeline startup information
 logger.info("=" * 60)
@@ -112,8 +112,8 @@ rule annotate:
         snakemake --use-conda annotate
     """
     input:
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_eggnog.tsv", sample=SAMPLES),
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_kofam.tsv", sample=SAMPLES)
+        expand("01.eggnog/{sample}_eggnog.tsv", sample=SAMPLES),
+        expand("02.kofam/{sample}_kofam.tsv", sample=SAMPLES)
     message:
         "✅ Annotation complete for all samples"
 
@@ -127,7 +127,7 @@ rule reports:
         snakemake --use-conda reports
     """
     input:
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_summary.txt", sample=SAMPLES)
+        expand("03.merge/{sample}_summary.txt", sample=SAMPLES)
     message:
         "✅ Reports generated for all samples"
 
@@ -142,7 +142,7 @@ rule ai_analysis:
         snakemake --use-conda --config ai.enabled=true ai_analysis
     """
     input:
-        expand(f"{OUTPUT_DIR}/{{sample}}/{{sample}}_ai_report.md", sample=SAMPLES) if AI_ENABLED else []
+        expand("04.ai/{sample}_ai_report.md", sample=SAMPLES) if AI_ENABLED else []
     message:
         "🤖 AI analysis complete!"
 
@@ -156,8 +156,8 @@ rule merge:
         snakemake --use-conda merge
     """
     input:
-        "merged/eggnog_all_samples.tsv",
-        "merged/kofam_all_samples.tsv",
-        "merged/SUMMARY_REPORT.txt"
+        "03.merge/eggnog_all_samples.tsv",
+        "03.merge/kofam_all_samples.tsv",
+        "03.merge/SUMMARY_REPORT.txt"
     message:
         "✅ Results merged successfully"

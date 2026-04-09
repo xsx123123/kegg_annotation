@@ -9,8 +9,8 @@ rule kofamscan:
     input:
         get_input_file
     output:
-        detail = "{sample}/kofam/{sample}_kofam_detail.txt",
-        tsv = "{sample}/kofam/{sample}_kofam_raw.tsv"
+        detail = "02.kofam/{sample}_kofam_detail.txt",
+        tsv = "02.kofam/{sample}_kofam_raw.tsv"
     conda:
         workflow.source_path("../env/kofamscan.yaml")
     params:
@@ -22,9 +22,9 @@ rule kofamscan:
     resources:
         **rule_resource(config, 'high_resource', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/{sample}_kofamscan.log"
+        "logs/02.kofam/{sample}_kofamscan.log"
     benchmark:
-        "benchmarks/{sample}_kofamscan.txt"
+        "benchmarks/02.kofam/{sample}_kofamscan.txt"
     message:
         "🎯 Running KofamScan on {wildcards.sample}"
     shell:
@@ -59,23 +59,23 @@ rule kofamscan_processor:
     Process KofamScan results with confidence assessment.
     """
     input:
-        detail = "{sample}/kofam/{sample}_kofam_detail.txt",
-        eggnog_annotations = "{sample}/eggnog/{sample}.emapper.annotations"
+        detail = "02.kofam/{sample}_kofam_detail.txt",
+        eggnog_annotations = "01.eggnog/{sample}.emapper.annotations"
     output:
-        formatted = "{sample}/{sample}_kofam.tsv",
-        high_conf = "{sample}/{sample}_kofam_highconf.tsv",
-        report = "{sample}/{sample}_kofam_report.txt"
+        formatted = "02.kofam/{sample}_kofam.tsv",
+        high_conf = "02.kofam/{sample}_kofam_highconf.tsv",
+        report = "02.kofam/{sample}_kofam_report.txt"
     conda:
         workflow.source_path("../env/python3.yaml")
     params:
-        output_prefix = "{sample}/{sample}_kofam",
+        output_prefix = "02.kofam/{sample}_kofam",
         min_confidence = MIN_CONFIDENCE
     resources:
         **rule_resource(config, 'default', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/{sample}_kofam_processor.log"
+        "logs/02.kofam/{sample}_kofam_processor.log"
     benchmark:
-        "benchmarks/{sample}_kofam_processor.txt"
+        "benchmarks/02.kofam/{sample}_kofam_processor.txt"
     message:
         "📊 Processing KofamScan for {wildcards.sample}"
     shell:
@@ -87,6 +87,4 @@ rule kofamscan_processor:
             -e {input.eggnog_annotations} \
             --min-confidence {params.min_confidence} \
             --log {log}
-        
-        mv {params.output_prefix}_report.txt {output.report} 2>/dev/null || true
         """

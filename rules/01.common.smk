@@ -171,34 +171,34 @@ def get_input_file(wildcards):
 
 
 def get_all_outputs():
-    """获取所有输出文件列表 - 扁平化目录结构"""
+    """获取所有输出文件列表 - 按分析步骤分目录"""
     outputs = []
     for sample in SAMPLES:
-        # 主要结果文件直接放在 sample/ 目录下
-        outputs.append(f"{sample}/{sample}_eggnog.tsv")
-        outputs.append(f"{sample}/{sample}_eggnog_highconf.tsv")
-        outputs.append(f"{sample}/{sample}_kofam.tsv")
-        outputs.append(f"{sample}/{sample}_kofam_highconf.tsv")
-        outputs.append(f"{sample}/{sample}_summary.txt")
+        # 01.eggnog 注释结果
+        outputs.append(f"01.eggnog/{sample}_eggnog.tsv")
+        outputs.append(f"01.eggnog/{sample}_eggnog_highconf.tsv")
         
-        # 整合评分结果
-        outputs.append(f"{sample}/{sample}_integrated.tsv")
-        outputs.append(f"{sample}/{sample}_integrated_report.txt")
+        # 02.kofam 注释结果
+        outputs.append(f"02.kofam/{sample}_kofam.tsv")
+        outputs.append(f"02.kofam/{sample}_kofam_highconf.tsv")
         
-        # AI 分析结果（如果启用）
-        if AI_ENABLED:
-            outputs.append(f"{sample}/{sample}_ai_report.md")
-            outputs.append(f"{sample}/{sample}_ai_analysis.json")
+        # 03.merge 整合与汇总结果
+        outputs.append(f"03.merge/{sample}_integrated.tsv")
+        outputs.append(f"03.merge/{sample}_integrated_report.txt")
+        outputs.append(f"03.merge/{sample}_summary.txt")
     
-    # 始终添加合并结果（单样本时相当于复制到 merged/ 目录作为标准化输出）
-    outputs.append("merged/eggnog_all_samples.tsv")
-    outputs.append("merged/eggnog_highconf.tsv")
-    outputs.append("merged/kofam_all_samples.tsv")
-    outputs.append("merged/kofam_highconf.tsv")
-    outputs.append("merged/SUMMARY_REPORT.txt")
+    # 多样本合并结果
+    outputs.append("03.merge/eggnog_all_samples.tsv")
+    outputs.append("03.merge/eggnog_highconf.tsv")
+    outputs.append("03.merge/kofam_all_samples.tsv")
+    outputs.append("03.merge/kofam_highconf.tsv")
+    outputs.append("03.merge/SUMMARY_REPORT.txt")
     
-    # AI 多样本汇总（如果启用）
+    # AI 分析结果（如果启用）
     if AI_ENABLED:
-        outputs.append("merged/AI_MULTI_SAMPLE_SUMMARY.md")
+        for sample in SAMPLES:
+            outputs.append(f"04.ai/{sample}_ai_report.md")
+            outputs.append(f"04.ai/{sample}_ai_analysis.json")
+        outputs.append("04.ai/AI_MULTI_SAMPLE_SUMMARY.md")
     
     return outputs

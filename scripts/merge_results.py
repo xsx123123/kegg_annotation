@@ -50,8 +50,8 @@ def merge_eggnog_results(input_dir, samples, output_all, output_high, output_sta
             progress.advance(task)
             
             # 读取完整结果
-            all_file = os.path.join(input_dir, sample, f"{sample}_eggnog.tsv")
-            high_file = os.path.join(input_dir, sample, f"{sample}_eggnog_highconf.tsv")
+            all_file = os.path.join(input_dir, f"{sample}_eggnog.tsv")
+            high_file = os.path.join(input_dir, f"{sample}_eggnog_highconf.tsv")
             
             if not os.path.exists(all_file):
                 logger.warning(f"文件不存在，跳过: {all_file}")
@@ -181,8 +181,8 @@ def merge_kofam_results(input_dir, samples, output_all, output_high, output_stat
             progress.advance(task)
             
             # 读取完整结果
-            all_file = os.path.join(input_dir, sample, f"{sample}_kofam.tsv")
-            high_file = os.path.join(input_dir, sample, f"{sample}_kofam_highconf.tsv")
+            all_file = os.path.join(input_dir, f"{sample}_kofam.tsv")
+            high_file = os.path.join(input_dir, f"{sample}_kofam_highconf.tsv")
             
             if not os.path.exists(all_file):
                 logger.warning(f"文件不存在，跳过: {all_file}")

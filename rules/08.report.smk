@@ -7,18 +7,18 @@ rule annotation_summary:
     Generate annotation summary for a single sample.
     """
     input:
-        eggnog_formatted = "{sample}/{sample}_eggnog.tsv",
-        eggnog_high_conf = "{sample}/{sample}_eggnog_highconf.tsv",
-        kofam_formatted = "{sample}/{sample}_kofam.tsv",
-        kofam_high_conf = "{sample}/{sample}_kofam_highconf.tsv"
+        eggnog_formatted = "01.eggnog/{sample}_eggnog.tsv",
+        eggnog_high_conf = "01.eggnog/{sample}_eggnog_highconf.tsv",
+        kofam_formatted = "02.kofam/{sample}_kofam.tsv",
+        kofam_high_conf = "02.kofam/{sample}_kofam_highconf.tsv"
     output:
-        summary = "{sample}/{sample}_summary.txt"
+        summary = "03.merge/{sample}_summary.txt"
     resources:
         **rule_resource(config, 'low_resource', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/{sample}_summary.log"
+        "logs/03.merge/{sample}_summary.log"
     benchmark:
-        "benchmarks/{sample}_summary.txt"
+        "benchmarks/03.merge/{sample}_summary.txt"
     message:
         "📝 Generating summary for {wildcards.sample}"
     shell:

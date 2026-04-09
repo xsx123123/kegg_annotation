@@ -16,49 +16,17 @@ from typing import List, Dict, Optional, Tuple
 from enum import Enum
 from pathlib import Path
 
-# 尝试导入 loguru 和 rich，如果不存在则使用标准库
-try:
-    from loguru import logger
-    from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-    from rich.text import Text
-    from rich import box
-    
-    # 配置 loguru（stderr 先保留，具体 handler 在 main 里根据参数决定）
-    logger.remove()  # 移除默认处理器
-    HAS_RICH = True
-except ImportError:
-    # 回退到标准 logging
-    import logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s | %(levelname)-8s | %(message)s',
-        datefmt='%H:%M:%S'
-    )
-    logger = logging.getLogger(__name__)
-    
-    # 创建 Mock Console
-    class MockConsole:
-        def print(self, *args, **kwargs):
-            print(*args)
-    
-    console = MockConsole()
-    HAS_RICH = False
-    
-    # Mock Progress
-    class MockProgress:
-        def __enter__(self):
-            return self
-        def __exit__(self, *args):
-            pass
-        def add_task(self, *args, **kwargs):
-            return 0
-        def advance(self, *args):
-            pass
-    
-    Progress = MockProgress
+from loguru import logger
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.text import Text
+from rich import box
+
+# 配置 loguru（stderr 先保留，具体 handler 在 main 里根据参数决定）
+logger.remove()  # 移除默认处理器
+console = Console()
 
 
 class ConfidenceLevel(Enum):
@@ -757,10 +725,12 @@ def main():
         logger.add(args.log, rotation="10 MB", retention="1 week")
     else:
         logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
-        logger.add("eggnog_processor_{time}.log", rotation="10 MB", retention="1 week")
-    
-    # 创建 rich console（必须在 logger 配置之后）
-    console = Console()
+        output_dir = os.path.dirname(args.output) or "."
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        output_name = os.path.basename(args.output)
+        log_path = os.path.join(output_dir, f"{output_name}_{{time}}.log")
+        logger.add(log_path, rotation="10 MB", retention="1 week")
     
     # 检查输入文件
     if not os.path.exists(args.input):

@@ -9,6 +9,7 @@ KofamScan Processor
 import pandas as pd
 import re
 import argparse
+import os
 from pathlib import Path
 
 # 导入 loguru 和 rich
@@ -22,6 +23,7 @@ import sys
 
 # loguru 配置推迟到 main() 中，根据 --log 参数决定
 logger.remove()
+console = Console()
 
 
 def parse_kofam_detail(file_path):
@@ -418,10 +420,12 @@ def main():
         logger.add(args.log, rotation="10 MB", retention="1 week")
     else:
         logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
-        logger.add("kofamscan_processor_{time}.log", rotation="10 MB", retention="1 week")
-    
-    # 创建 rich console
-    console = Console()
+        output_dir = os.path.dirname(args.output) or "."
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        output_name = os.path.basename(args.output)
+        log_path = os.path.join(output_dir, f"{output_name}_{{time}}.log")
+        logger.add(log_path, rotation="10 MB", retention="1 week")
     
     # 启动信息
     console.print(Panel(

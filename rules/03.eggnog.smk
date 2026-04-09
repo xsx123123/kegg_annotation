@@ -9,9 +9,9 @@ rule eggnog_mapper:
     input:
         get_input_file
     output:
-        annotations = "{sample}/eggnog/{sample}.emapper.annotations",
-        seed_orthologs = "{sample}/eggnog/{sample}.emapper.seed_orthologs",
-        hits = "{sample}/eggnog/{sample}.emapper.hits"
+        annotations = "01.eggnog/{sample}.emapper.annotations",
+        seed_orthologs = "01.eggnog/{sample}.emapper.seed_orthologs",
+        hits = "01.eggnog/{sample}.emapper.hits"
     conda:
         workflow.source_path("../env/eggnog-mapper.yaml")
     params:
@@ -22,20 +22,21 @@ rule eggnog_mapper:
     resources:
         **rule_resource(config, 'high_resource', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/{sample}_eggnog_mapper.log"
+        "logs/01.eggnog/{sample}_eggnog_mapper.log"
     benchmark:
-        "benchmarks/{sample}_eggnog_mapper.txt"
+        "benchmarks/01.eggnog/{sample}_eggnog_mapper.txt"
     message:
         "🧬 Running eggnog-mapper on {wildcards.sample}"
     shell:
         """
         mkdir -p {params.temp_dir}
         
+        mkdir -p 01.eggnog && \
         emapper.py \
             -i {input} \
             --data_dir {params.data_dir} \
             -o {wildcards.sample} \
-            --output_dir {wildcards.sample}/eggnog \
+            --output_dir 01.eggnog \
             --cpu {threads} \
             --temp_dir {params.temp_dir} \
             --override \
@@ -49,15 +50,15 @@ rule eggnog_processor:
     Process eggnog results with quality filtering.
     """
     input:
-        annotations = "{sample}/eggnog/{sample}.emapper.annotations"
+        annotations = "01.eggnog/{sample}.emapper.annotations"
     output:
-        formatted = "{sample}/{sample}_eggnog.tsv",
-        high_conf = "{sample}/{sample}_eggnog_highconf.tsv",
-        report = "{sample}/{sample}_eggnog_report.txt"
+        formatted = "01.eggnog/{sample}_eggnog.tsv",
+        high_conf = "01.eggnog/{sample}_eggnog_highconf.tsv",
+        report = "01.eggnog/{sample}_eggnog_report.txt"
     conda:
         workflow.source_path("../env/python3.yaml")
     params:
-        output_prefix = "{sample}/{sample}_eggnog",
+        output_prefix = "01.eggnog/{sample}_eggnog",
         evalue = EVALUE_THRESHOLD,
         bitscore = BITSCORE_THRESHOLD,
         min_confidence = MIN_CONFIDENCE,
@@ -66,9 +67,9 @@ rule eggnog_processor:
     resources:
         **rule_resource(config, 'default', skip_queue_on_local=True, logger=logger)
     log:
-        "logs/{sample}_eggnog_processor.log"
+        "logs/01.eggnog/{sample}_eggnog_processor.log"
     benchmark:
-        "benchmarks/{sample}_eggnog_processor.txt"
+        "benchmarks/01.eggnog/{sample}_eggnog_processor.txt"
     message:
         "🔬 Processing eggnog for {wildcards.sample}"
     shell:
@@ -83,6 +84,4 @@ rule eggnog_processor:
             {params.require_kegg} \
             {params.require_go} \
             --log {log}
-        
-        mv {params.output_prefix}_report.txt {output.report} 2>/dev/null || true
         """
