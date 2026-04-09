@@ -11,8 +11,9 @@ import argparse
 import json
 import os
 import sys
+import math
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 # 尝试导入 loguru
@@ -94,6 +95,62 @@ class AICurator:
         else:
             raise ValueError(f"不支持的 AI 提供商: {self.provider}")
 
+    def _get_kofam_ratio(self, kofam_record: Optional[Dict]) -> float:
+        """计算 KofamScan score/threshold 比值"""
+        if not kofam_record:
+            return 0.0
+        thresh = float(kofam_record.get('kofam_threshold') or kofam_record.get('threshold', 1) or 1)
+        score = float(kofam_record.get('score', 0) or 0)
+        return score / thresh if thresh > 0 else 0.0
+
+    def _get_eggnog_evalue(self, eggnog_record: Dict) -> float:
+        """安全提取 eggnog e-value"""
+        ev = eggnog_record.get('evalue', 999.0)
+        if ev is None or (isinstance(ev, str) and ev.strip() == ''):
+            return 999.0
+        try:
+            return float(ev)
+        except (ValueError, TypeError):
+            return 999.0
+
+    def _classify_protein(self, eggnog_record: Dict, kofam_record: Optional[Dict]) -> Tuple[str, Dict]:
+        """
+        分层筛选：判断蛋白是否值得送 AI 评估
+        返回: (category, preset_result)
+        category: 'high_conf' | 'low_qual' | 'ambiguous'
+        """
+        evalue = self._get_eggnog_evalue(eggnog_record)
+        ratio = self._get_kofam_ratio(kofam_record)
+
+        # 高置信：e-value 极显著且 Kofam 比值高
+        if evalue < 1e-10 and ratio > 1.5:
+            return "high_conf", {
+                "eggnog_reliability": {"score": 95, "level": "High", "reasons": [f"e-value={evalue:.0e} 极显著", "Kofam ratio={ratio:.2f}x 高可信"]},
+                "kofam_reliability": {"score": 95, "level": "High", "reasons": [f"score/threshold={ratio:.2f}x > 1.5"]},
+                "cross_tool_consistency": "Consistent" if ratio > 0 else "Unknown",
+                "species_plausibility": "Plausible",
+                "overall_confidence": "High",
+                "flags": [],
+                "recommended_action": "Accept",
+                "_source": "rule_based",
+            }
+
+        # 明显低质量：e-value 差 或 Kofam 比值极低
+        if evalue > 1e-3 or ratio < 0.5:
+            return "low_qual", {
+                "eggnog_reliability": {"score": 20, "level": "Low", "reasons": [f"e-value={evalue:.0e}"] if evalue > 1e-3 else ["e-value 可接受但 Kofam 极弱"]},
+                "kofam_reliability": {"score": max(10, int(ratio*50)), "level": "Low", "reasons": [f"score/threshold={ratio:.2f}x < 0.5"]},
+                "cross_tool_consistency": "Unknown",
+                "species_plausibility": "Uncertain",
+                "overall_confidence": "Low",
+                "flags": ["Low quality by traditional thresholds"],
+                "recommended_action": "Reject",
+                "_source": "rule_based",
+            }
+
+        # 其余为模糊区域，需要 AI 判断
+        return "ambiguous", {}
+
     def _build_per_protein_prompt(
         self,
         protein_id: str,
@@ -113,12 +170,13 @@ class AICurator:
         ec = eggnog_record.get('ec', '')
         go = eggnog_record.get('gos', '')
 
+        ratio = self._get_kofam_ratio(kofam_record)
+
         if kofam_record:
             ko_id = str(kofam_record.get('KO', 'N/A'))
             ko_def = str(kofam_record.get('Description', 'N/A'))
             thresh = float(kofam_record.get('kofam_threshold') or kofam_record.get('threshold', 1) or 1)
             score = float(kofam_record.get('score', 0) or 0)
-            ratio = score / thresh if thresh > 0 else 0
             sig = str(kofam_record.get('pass_threshold', '-'))
             kofam_evalue = kofam_record.get('evalue', 'N/A')
             kofam_section = f"""### KofamScan 注释
@@ -158,16 +216,29 @@ class AICurator:
 {kofam_section}
 {consistency_note}
 
+## Taxonomic scope 匹配等级评估（重要）
+Taxonomic scope 表示 eggNOG 最佳同源物所在的分类群。匹配层级越精细，可信度越高：
+- **精确匹配**：tax_scope 是物种的科/属/种级（如 Enterobacteriaceae 对应 E. coli）→ 高度可信
+- **宽泛匹配**：tax_scope 是门/纲级（如 Bacteria 对应具体菌株）→ 匹配过于宽泛，应降级处理
+- **严重不匹配**：tax_scope 包含 Eukaryota 而物种是原核生物（或反之）→ 可能为污染或水平转移，标记为异常
+
+## KofamScan 阈值比值背景（重要）
+KofamScan 的 score/threshold 比值是核心可信度指标，但不同 KO 的阈值设定本身有差异：
+- 管家基因（如核糖体蛋白）通常阈值较高，需要很强的相似性才算命中
+- 稀有功能基因或物种特异性基因阈值较低，ratio=1.1 不一定代表"弱可信"
+- 因此评估时应结合该 KO 的功能类型，避免简单以 ratio 划线
+
 ## 评估任务
 请从以下角度评估注释可靠性，以 JSON 格式返回：
 
 1. **eggNOG 可靠性**：
    - e-value/bitscore 是否支持可信注释（一般 e-value < 1e-5, bitscore > 50 为可信）
-   - tax_scope 与该蛋白物种分类是否匹配（如细菌蛋白对应的 tax_scope 不应是 Eukaryota）
+   - tax_scope 与该蛋白物种分类是否匹配（参考上方的匹配等级评估）
    - 功能描述是否与 COG 分类吻合
 
 2. **KofamScan 可靠性**：
    - Score/Threshold 比值（>1.5 高可信，1.0-1.5 中等，<1.0 仅参考）
+   - 结合该 KO 的功能类型（管家基因 vs 稀有基因）判断，不要简单以 ratio 划线
    - 与 eggNOG KO 注释是否一致
 
 3. **物种合理性**：
@@ -179,12 +250,12 @@ class AICurator:
   "eggnog_reliability": {{
     "score": 85,
     "level": "High",
-    "reasons": ["e-value=1e-10 高度可信", "tax_scope 与物种匹配"]
+    "reasons": ["e-value=1e-10 高度可信", "tax_scope 精确匹配"]
   }},
   "kofam_reliability": {{
     "score": 70,
     "level": "Medium",
-    "reasons": ["score/threshold=1.2x，中等置信", "与 eggNOG KO 一致"]
+    "reasons": ["score/threshold=1.2x，中等置信", "结合 KO 类型判断为中等", "与 eggNOG KO 一致"]
   }},
   "cross_tool_consistency": "Consistent",
   "species_plausibility": "Plausible",
@@ -199,44 +270,89 @@ class AICurator:
         proteins: List[Dict],
         species_taxonomy: str,
         max_proteins: int = 50,
-    ) -> List[Dict]:
-        """批量评估每个蛋白的注释可靠性"""
+        auto_filter: bool = True,
+    ) -> Tuple[List[Dict], Dict]:
+        """批量评估每个蛋白的注释可靠性
+        
+        返回: (results, token_usage_summary)
+        """
         results = []
-        total = min(len(proteins), max_proteins)
-        logger.info(f"开始逐蛋白 AI 评估，共 {len(proteins)} 个，本次评估前 {total} 个...")
+        total_tokens = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        ai_count = 0
+        rule_count = 0
+        categories = {"high_conf": 0, "low_qual": 0, "ambiguous": 0}
 
-        for idx, prot in enumerate(proteins[:total], 1):
-            protein_id = prot.get('protein_id', prot.get('query', f"prot_{idx}"))
-            eggnog_record = prot.get('eggnog', {})
-            kofam_record = prot.get('kofam')
+        # 1. 先全部分类
+        classified = []
+        for prot in proteins:
+            cat, preset = self._classify_protein(prot.get('eggnog', {}), prot.get('kofam'))
+            categories[cat] = categories.get(cat, 0) + 1
+            classified.append((prot, cat, preset))
 
-            prompt = self._build_per_protein_prompt(
-                protein_id, species_taxonomy, eggnog_record, kofam_record
-            )
-            try:
-                raw_resp = self._call_ai(prompt)
-                result = self._parse_response(raw_resp, {})
+        logger.info(
+            f"分层筛选结果: {categories['high_conf']} 高置信, "
+            f"{categories['low_qual']} 低质量, "
+            f"{categories['ambiguous']} 模糊区域 (待 AI 评估)"
+        )
+
+        # 2. 确定实际需要送 AI 的蛋白
+        ai_candidates = [item for item in classified if item[1] == "ambiguous"]
+        if len(ai_candidates) > max_proteins:
+            # 优先保留有 Kofam 记录的，其次随机截断
+            ai_candidates = ai_candidates[:max_proteins]
+            logger.warning(f"模糊区域蛋白过多，AI 评估限制为前 {max_proteins} 个")
+
+        ai_set = {id(item[0]) for item in ai_candidates}
+
+        # 3. 逐个处理
+        for prot, cat, preset in classified:
+            protein_id = prot.get('protein_id', prot.get('query', 'N/A'))
+
+            if not auto_filter or cat != "ambiguous" or id(prot) not in ai_set:
+                # 规则直接判定
+                result = dict(preset)
                 result['protein_id'] = protein_id
-                result['_prompt'] = prompt  # 可选，调试用
-            except Exception as e:
-                logger.warning(f"蛋白 {protein_id} AI 评估失败: {e}")
-                result = {
-                    "protein_id": protein_id,
-                    "eggnog_reliability": {"score": 0, "level": "Unknown", "reasons": [f"AI 调用失败: {e}"]},
-                    "kofam_reliability": {"score": 0, "level": "Unknown", "reasons": []},
-                    "cross_tool_consistency": "Unknown",
-                    "species_plausibility": "Unknown",
-                    "overall_confidence": "Unknown",
-                    "flags": [str(e)],
-                    "recommended_action": "Review",
-                }
+                result['_tokens'] = None
+                rule_count += 1
+            else:
+                # 调用 AI
+                prompt = self._build_per_protein_prompt(
+                    protein_id, species_taxonomy, prot.get('eggnog', {}), prot.get('kofam')
+                )
+                try:
+                    raw_resp, usage = self._call_ai(prompt)
+                    result = self._parse_response(raw_resp, protein_id=protein_id)
+                    result['protein_id'] = protein_id
+                    if usage:
+                        result['_tokens'] = usage
+                        total_tokens["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                        total_tokens["completion_tokens"] += usage.get("completion_tokens", 0)
+                        total_tokens["total_tokens"] += usage.get("total_tokens", 0)
+                    else:
+                        result['_tokens'] = None
+                except Exception as e:
+                    logger.warning(f"蛋白 {protein_id} AI 评估失败: {e}")
+                    result = {
+                        "protein_id": protein_id,
+                        "eggnog_reliability": {"score": 0, "level": "Unknown", "reasons": [f"AI 调用失败: {e}"]},
+                        "kofam_reliability": {"score": 0, "level": "Unknown", "reasons": []},
+                        "cross_tool_consistency": "Unknown",
+                        "species_plausibility": "Unknown",
+                        "overall_confidence": "Unknown",
+                        "flags": [str(e)],
+                        "recommended_action": "Review",
+                        "_tokens": None,
+                    }
+                ai_count += 1
+
             results.append(result)
 
-        logger.info(f"逐蛋白评估完成: {len(results)} 个")
-        return results
+        logger.info(f"评估完成: {rule_count} 个规则判定, {ai_count} 个 AI 调用")
+        logger.info(f"Token 消耗汇总: {total_tokens}")
+        return results, {"total_tokens": total_tokens, "ai_calls": ai_count, "rule_based": rule_count, "categories": categories}
 
-    def _call_ai(self, prompt: str) -> str:
-        """调用 AI API"""
+    def _call_ai(self, prompt: str) -> Tuple[str, Optional[Dict]]:
+        """调用 AI API，返回 (content, usage_dict)"""
         if self.provider == "openai":
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -246,14 +362,32 @@ class AICurator:
                 ],
                 temperature=0.3
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            usage = None
+            if getattr(response, "usage", None):
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+            return content, usage
+
         elif self.provider == "claude":
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=4000,
                 messages=[{"role": "user", "content": prompt}]
             )
-            return response.content[0].text
+            content = response.content[0].text
+            usage = None
+            if getattr(response, "usage", None):
+                usage = {
+                    "prompt_tokens": getattr(response.usage, "input_tokens", 0),
+                    "completion_tokens": getattr(response.usage, "output_tokens", 0),
+                    "total_tokens": getattr(response.usage, "input_tokens", 0) + getattr(response.usage, "output_tokens", 0),
+                }
+            return content, usage
+
         elif self.provider == "ollama":
             import requests
             response = requests.post(
@@ -262,43 +396,55 @@ class AICurator:
                 timeout=300,
             )
             response.raise_for_status()
-            return response.json()["response"]
+            content = response.json()["response"]
+            # Ollama 不统一返回 token usage
+            return content, None
+
         else:
             raise ValueError(f"不支持的提供商: {self.provider}")
 
-    def _parse_response(self, response: str, stats: Dict) -> Dict:
-        """解析 AI 响应"""
+    def _parse_response(self, response: str, protein_id: str = "") -> Dict:
+        """解析 AI 响应（增强容错）"""
+        raw = response
+        # 1. 尝试从 markdown code block 中提取
+        import re
+        code_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response, re.DOTALL)
+        if code_match:
+            response = code_match.group(1)
+
+        # 2. 尝试直接解析 JSON
         try:
             result = json.loads(response)
+            return result
         except json.JSONDecodeError:
-            import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                try:
-                    result = json.loads(json_match.group())
-                except json.JSONDecodeError:
-                    result = self._create_fallback_result(response, stats)
-            else:
-                result = self._create_fallback_result(response, stats)
-        result['raw_stats'] = stats
-        return result
+            pass
 
-    def _create_fallback_result(self, response: str, stats: Dict) -> Dict:
-        """创建回退结果"""
-        logger.warning("AI 响应解析失败，使用文本格式")
+        # 3. 尝试提取第一个 { ... } 块
+        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        if json_match:
+            try:
+                result = json.loads(json_match.group())
+                return result
+            except json.JSONDecodeError:
+                pass
+
+        # 4. 全部失败，回退
+        logger.warning(f"蛋白 {protein_id} AI 响应 JSON 解析失败")
         return {
-            "summary": "AI 分析完成，但返回格式非标准 JSON",
-            "quality_assessment": {"score": 0, "level": "Unknown", "reason": "解析失败"},
-            "key_functions": [],
-            "potential_issues": [],
-            "recommendations": ["请检查 AI 模型输出格式"],
-            "pathway_insights": "",
-            "raw_response": response,
-            "raw_stats": stats,
+            "protein_id": protein_id,
+            "error": "parse_failed",
+            "raw_response": raw[:800],
+            "eggnog_reliability": {"score": 0, "level": "Unknown", "reasons": ["JSON 解析失败"]},
+            "kofam_reliability": {"score": 0, "level": "Unknown", "reasons": []},
+            "cross_tool_consistency": "Unknown",
+            "species_plausibility": "Unknown",
+            "overall_confidence": "Unknown",
+            "flags": ["parse_failed"],
+            "recommended_action": "Review",
         }
 
 
-def generate_report(ai_results: List[Dict], sample_name: str, output_file: str):
+def generate_report(ai_results: List[Dict], sample_name: str, output_file: str, usage_summary: Optional[Dict] = None):
     """生成 AI 分析报告（基于逐蛋白评估结果）"""
 
     # 统计汇总
@@ -309,6 +455,8 @@ def generate_report(ai_results: List[Dict], sample_name: str, output_file: str):
     unknown = total - high - medium - low
     conflicts = sum(1 for r in ai_results if r.get("cross_tool_consistency") == "Inconsistent")
     flags = [r for r in ai_results if r.get("flags")]
+    ai_evaluated = sum(1 for r in ai_results if r.get("_source") != "rule_based")
+    rule_based = total - ai_evaluated
 
     report = f"""# AI 注释分析报告（逐蛋白评估）
 
@@ -317,6 +465,17 @@ def generate_report(ai_results: List[Dict], sample_name: str, output_file: str):
 **分析时间**: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
 **评估蛋白数**: {total}
 
+## 处理策略与 Token 消耗
+- **规则直接判定**: {rule_based} 个蛋白（高置信/低质量两端，不消耗 token）
+- **AI 实际评估**: {ai_evaluated} 个蛋白
+"""
+    if usage_summary:
+        tok = usage_summary.get("total_tokens", {})
+        report += f"- **Prompt tokens**: {tok.get('prompt_tokens', 'N/A')}\n"
+        report += f"- **Completion tokens**: {tok.get('completion_tokens', 'N/A')}\n"
+        report += f"- **Total tokens**: {tok.get('total_tokens', 'N/A')}\n"
+
+    report += f"""
 ## 整体质量汇总
 - **High confidence**: {high} ({high/max(total,1)*100:.1f}%)
 - **Medium confidence**: {medium} ({medium/max(total,1)*100:.1f}%)
@@ -346,14 +505,18 @@ def generate_report(ai_results: List[Dict], sample_name: str, output_file: str):
         pid = r.get("protein_id", "N/A")
         ov = r.get("overall_confidence", "N/A")
         act = r.get("recommended_action", "N/A")
+        src = "AI" if r.get("_source") != "rule_based" else "Rule"
         fl = ", ".join(r.get("flags", [])) if r.get("flags") else "None"
-        report += f"- `{pid}` | Overall: **{ov}** | Action: **{act}** | Flags: {fl}\n"
+        report += f"- `{pid}` | Overall: **{ov}** | Action: **{act}** | Source: **{src}** | Flags: {fl}\n"
 
     report += "\n## 逐蛋白详细评估\n"
     for r in ai_results:
         pid = r.get("protein_id", "N/A")
         egg = r.get("eggnog_reliability", {})
         kof = r.get("kofam_reliability", {})
+        src = "AI" if r.get("_source") != "rule_based" else "Rule"
+        tokens = r.get("_tokens")
+        tok_str = f" | Tokens: {tokens['total_tokens']}" if tokens else ""
         report += f"""
 ### {pid}
 - **Overall confidence**: {r.get('overall_confidence', 'N/A')}
@@ -363,6 +526,7 @@ def generate_report(ai_results: List[Dict], sample_name: str, output_file: str):
 - **KofamScan**: {kof.get('level', 'N/A')} (score={kof.get('score', 'N/A')})
 - **Recommended action**: {r.get('recommended_action', 'N/A')}
 - **Flags**: {', '.join(r.get('flags', [])) or 'None'}
+- **Source**: {src}{tok_str}
 """
 
     with open(output_file, 'w', encoding='utf-8') as f:
@@ -378,7 +542,8 @@ def main():
     parser.add_argument('-o', '--output', required=True, help='输出 Markdown 报告')
     parser.add_argument('--output-json', required=True, help='输出 JSON 评估结果')
     parser.add_argument('--taxonomy', default='Unknown', help='物种分类信息（如 Bacteria;Firmicutes;Bacillales）')
-    parser.add_argument('--max-proteins', type=int, default=50, help='最大评估蛋白数（默认 50）')
+    parser.add_argument('--max-proteins', type=int, default=50, help='最大 AI 评估蛋白数（仅针对模糊区域，默认 50）')
+    parser.add_argument('--no-auto-filter', action='store_true', help='关闭分层筛选，所有蛋白都送 AI（Token 消耗高）')
     parser.add_argument('--provider', default='ollama', choices=['openai', 'claude', 'ollama'])
     parser.add_argument('--model', default='llama3.2')
     parser.add_argument('--api-key', help='API 密钥（也可通过环境变量 AI_API_KEY 设置）')
@@ -443,15 +608,18 @@ def main():
 
     logger.info("运行逐蛋白 AI 评估...")
     try:
-        results = curator.evaluate_per_protein(
-            proteins, args.taxonomy, max_proteins=args.max_proteins
+        results, usage_summary = curator.evaluate_per_protein(
+            proteins,
+            args.taxonomy,
+            max_proteins=args.max_proteins,
+            auto_filter=not args.no_auto_filter,
         )
     except Exception as e:
         logger.error(f"AI 评估失败: {e}")
         sys.exit(1)
 
     # 生成 Markdown 报告
-    generate_report(results, args.sample, args.output)
+    generate_report(results, args.sample, args.output, usage_summary)
 
     # 保存 JSON
     with open(args.output_json, 'w', encoding='utf-8') as f:
@@ -461,7 +629,10 @@ def main():
             'provider': args.provider,
             'model': args.model,
             'total_proteins': len(proteins),
-            'evaluated': len(results),
+            'evaluated_by_ai': usage_summary.get("ai_calls", 0),
+            'rule_based': usage_summary.get("rule_based", 0),
+            'token_usage': usage_summary.get("total_tokens", {}),
+            'categories': usage_summary.get("categories", {}),
             'results': results,
         }, f, indent=2, ensure_ascii=False)
     logger.info(f"JSON 结果已保存: {args.output_json}")
