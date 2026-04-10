@@ -9,6 +9,7 @@ rule kofamscan:
     input:
         get_input_file
     output:
+        formatted = "02.kofam/{sample}_kofam_temp.fa",
         detail = "02.kofam/{sample}_kofam_detail.txt",
         tsv = "02.kofam/{sample}_kofam_raw.tsv"
     conda:
@@ -30,6 +31,8 @@ rule kofamscan:
     shell:
         """
         mkdir -p {params.tmp_dir}
+
+        awk '/^>/{{print; next}} {{gsub(/[*]/,""); gsub(/[.]/,""); print}}' {input} > {output.formatted}
         
         exec_annotation \
             -o {output.detail} \
@@ -38,7 +41,7 @@ rule kofamscan:
             --cpu {threads} \
             --tmp-dir {params.tmp_dir} \
             -f detail \
-            {input} \
+            {output.formatted} \
             > {log} 2>&1
         
         exec_annotation \
@@ -48,7 +51,7 @@ rule kofamscan:
             --cpu {threads} \
             --tmp-dir {params.tmp_dir} \
             -f mapper \
-            {input} \
+            {output.formatted} \
             >> {log} 2>&1
         
         rm -rf {params.tmp_dir}

@@ -9,6 +9,7 @@ rule eggnog_mapper:
     input:
         get_input_file
     output:
+        formatted = "01.eggnog/{sample}.eggnog_temp.fa",
         annotations = "01.eggnog/{sample}.emapper.annotations",
         seed_orthologs = "01.eggnog/{sample}.emapper.seed_orthologs",
         hits = "01.eggnog/{sample}.emapper.hits"
@@ -30,10 +31,12 @@ rule eggnog_mapper:
     shell:
         """
         mkdir -p {params.temp_dir}
+
+        awk '/^>/{{print; next}} {{gsub(/[*]/,""); gsub(/[.]/,""); print}}' {input} > {output.formatted}
         
         mkdir -p 01.eggnog && \
         emapper.py \
-            -i {input} \
+            -i {output.formatted} \
             --data_dir {params.data_dir} \
             -o {wildcards.sample} \
             --output_dir 01.eggnog \
