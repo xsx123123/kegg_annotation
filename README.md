@@ -243,7 +243,7 @@ snakemake --use-conda --cores 8 \
 ### 输出文件结构
 
 ```
-01.eggnog/                          # eggnog-mapper 结果目录
+01.eggnog/                         # eggnog-mapper 结果目录
 ├── {sample}.emapper.annotations   # eggnog 原始输出
 ├── {sample}.emapper.hits          # 比对详情
 ├── {sample}.emapper.seed_orthologs
@@ -251,14 +251,14 @@ snakemake --use-conda --cores 8 \
 ├── {sample}_eggnog_highconf.tsv   # 高可信度子集 ⭐
 └── {sample}_eggnog_report.txt     # 处理报告
 
-02.kofam/                           # KofamScan 结果目录
+02.kofam/                          # KofamScan 结果目录
 ├── {sample}_kofam_detail.txt      # KofamScan 原始输出
 ├── {sample}_kofam_raw.tsv         # mapper 格式原始输出
 ├── {sample}_kofam.tsv             # 处理后的 Kofam 结果
 ├── {sample}_kofam_highconf.tsv    # 高可信度子集
 └── {sample}_kofam_report.txt      # 处理报告
 
-03.merge/                           # 整合与合并结果目录
+03.merge/                          # 整合与合并结果目录
 ├── {sample}_integrated.tsv        # 单样本整合结果
 ├── {sample}_integrated_report.txt # 整合评分报告
 ├── {sample}_summary.txt           # 单样本摘要报告
@@ -268,7 +268,7 @@ snakemake --use-conda --cores 8 \
 ├── kofam_highconf.tsv             # kofam 高可信度合并
 └── SUMMARY_REPORT.txt             # 整体汇总报告
 
-04.ai/                              # AI 分析结果目录
+04.ai/                             # AI 分析结果目录
 ├── {sample}_ai_report.md          # AI 逐蛋白评估报告（Markdown）
 ├── {sample}_ai_analysis.json      # 结构化评估数据（JSON）
 └── AI_MULTI_SAMPLE_SUMMARY.md     # 多样本 AI 汇总
