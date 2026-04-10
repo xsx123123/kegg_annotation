@@ -1,6 +1,0 @@
-query	KO	threshold	score	evalue	evalue_str	definition	EC	is_significant	pass_threshold	confidence_level	confidence_score	confidence_reason	total_hits	significant_hits
-gene_1	K04526	81.87	110.7	1.8e-35	1.8e-35	insulin	-	True	True	High	95	Pass threshold, unique significant hit	8	1
-gene_2	K18245	422.23	137.9	1.2e-43	1.2e-43	carbonic anhydrase 2	4.2.1.1	False	False	Medium	75	High score but close to other hits (ambiguous)	6	0
-gene_3	K16141	864.47	991.5	4.7e-302	4.7e-302	serum albumin	-	True	True	High	95	Pass threshold, unique significant hit	6	1
-gene_4	K06546	81.2	24.1	7.2e-09	7.2e-09	CD164 antigen	-	False	False	Low	40	Low score or high e-value	45	0
-gene_5	K08289	263.97	4.9	0.0027	0.0027	phosphoribosylglycinamide formyltransferase 2	6.3.1.21	False	False	Low	40	Low score or high e-value	4	0

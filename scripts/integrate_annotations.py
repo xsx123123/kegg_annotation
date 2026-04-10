@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+integrate_annotations#!/usr/bin/env python3
 """
 Integrate eggnog and KofamScan annotation results with scoring system.
 对 eggnog 和 KofamScan 注释结果进行整合，并给出综合评分。
