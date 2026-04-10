@@ -167,6 +167,13 @@ def get_input_file(wildcards):
     extensions = [".pep", ".fa", ".fasta", ".faa", ".protein"]
     base = wildcards.sample
     
+    # 0. 如果 base 本身已经以允许的扩展名结尾，先尝试直接使用
+    for ext in extensions:
+        if base.endswith(ext):
+            path = os.path.join(INPUT_DIR, base)
+            if os.path.exists(path):
+                return path
+    
     # 1. 先尝试精确匹配常见简单扩展名
     for ext in extensions:
         path = os.path.join(INPUT_DIR, f"{base}{ext}")
