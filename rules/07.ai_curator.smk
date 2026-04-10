@@ -25,7 +25,9 @@ rule ai_annotation_curator:
         kofam = "02.kofam/{sample}_kofam.tsv"
     output:
         report = "04.ai/{sample}_ai_report.md",
-        json = "04.ai/{sample}_ai_analysis.json"
+        json = "04.ai/{sample}_ai_analysis.json",
+        tsv = "04.ai/{sample}_ai_analysis.tsv",
+        csv = "04.ai/{sample}_ai_analysis.csv"
     params:
         provider = lambda wc: config.get("ai", {}).get("provider", "ollama"),
         model = lambda wc: config.get("ai", {}).get("model", "llama3.2"),
@@ -47,7 +49,7 @@ rule ai_annotation_curator:
     shell:
         """
         # 构建基础命令
-        CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --output-json {output.json} --provider {params.provider} --model {params.model} --taxonomy '{params.taxonomy}' --max-proteins {params.max_proteins} {params.no_auto_filter}"
+        CMD="python3 {params.ai_curator_script} -e {input.eggnog} -k {input.kofam} -s {wildcards.sample} -o {output.report} --output-json {output.json} --output-tsv {output.tsv} --output-csv {output.csv} --provider {params.provider} --model {params.model} --taxonomy '{params.taxonomy}' --max-proteins {params.max_proteins} {params.no_auto_filter}"
         
         # 追加 API key 和 API base 参数
         if [ -n "{params.api_key}" ]; then

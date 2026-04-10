@@ -584,6 +584,33 @@ def generate_report(ai_results: List[Dict], sample_name: str, output_file: str, 
     logger.info(f"AI 分析报告已保存: {output_file}")
 
 
+def flatten_ai_results(results: List[Dict]) -> pd.DataFrame:
+    """将嵌套的 AI 评估结果展平为 DataFrame，便于输出 TSV/CSV"""
+    rows = []
+    for r in results:
+        egg = r.get("eggnog_reliability", {})
+        kof = r.get("kofam_reliability", {})
+        rows.append({
+            "protein_id": r.get("protein_id", ""),
+            "eggnog_kegg_ko": r.get("eggnog_kegg_ko", ""),
+            "kofam_ko": r.get("kofam_ko", ""),
+            "overall_confidence": r.get("overall_confidence", ""),
+            "cross_tool_consistency": r.get("cross_tool_consistency", ""),
+            "species_plausibility": r.get("species_plausibility", ""),
+            "recommended_action": r.get("recommended_action", ""),
+            "eggnog_level": egg.get("level", ""),
+            "eggnog_score": egg.get("score", ""),
+            "eggnog_reasons": "; ".join(egg.get("reasons", [])),
+            "kofam_level": kof.get("level", ""),
+            "kofam_score": kof.get("score", ""),
+            "kofam_reasons": "; ".join(kof.get("reasons", [])),
+            "flags": "; ".join(r.get("flags", [])),
+            "source": r.get("_source", ""),
+            "error": r.get("error", ""),
+        })
+    return pd.DataFrame(rows)
+
+
 def main():
     parser = argparse.ArgumentParser(description='AI Curator for KEGG Annotation (per-protein)')
     parser.add_argument('-e', '--eggnog', required=True, help='eggnog 结果 TSV')
@@ -591,6 +618,8 @@ def main():
     parser.add_argument('-s', '--sample', required=True, help='样本名称')
     parser.add_argument('-o', '--output', required=True, help='输出 Markdown 报告')
     parser.add_argument('--output-json', required=True, help='输出 JSON 评估结果')
+    parser.add_argument('--output-tsv', help='输出 TSV 格式评估结果（可选）')
+    parser.add_argument('--output-csv', help='输出 CSV 格式评估结果（可选）')
     parser.add_argument('--taxonomy', default='Unknown', help='物种分类信息（如 Bacteria;Firmicutes;Bacillales）')
     parser.add_argument('--max-proteins', type=int, default=50, help='最大 AI 评估蛋白数（仅针对模糊区域，默认 50）')
     parser.add_argument('--no-auto-filter', action='store_true', help='关闭分层筛选，所有蛋白都送 AI（Token 消耗高）')
@@ -686,6 +715,18 @@ def main():
             'results': results,
         }, f, indent=2, ensure_ascii=False)
     logger.info(f"JSON 结果已保存: {args.output_json}")
+
+    # 从内存结果直接展平输出 TSV/CSV（无需重新运行 AI）
+    if args.output_tsv or args.output_csv:
+        logger.info("生成 TSV/CSV 表格...")
+        df = flatten_ai_results(results)
+        if args.output_tsv:
+            df.to_csv(args.output_tsv, sep='\t', index=False)
+            logger.info(f"TSV 结果已保存: {args.output_tsv}")
+        if args.output_csv:
+            df.to_csv(args.output_csv, index=False)
+            logger.info(f"CSV 结果已保存: {args.output_csv}")
+
     logger.success("AI 分析完成!")
 
 
