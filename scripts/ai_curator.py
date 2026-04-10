@@ -125,9 +125,15 @@ class AICurator:
         kofam_ko_raw = str(kofam_record.get('KO', '') or '') if kofam_record else ''
         kofam_ko = kofam_ko_raw.replace('ko:', '').strip()
 
+        # 生成规则判定用的 fallback annotation_summary
+        egg_desc = str(eggnog_record.get('description', '') or '').strip()
+        kof_def = str(kofam_record.get('definition', kofam_record.get('Description', '')) or '').strip() if kofam_record else ''
+        fallback_summary = " | ".join([d for d in (egg_desc, kof_def) if d]) or "No functional description available"
+
         # 高置信：e-value 极显著且 Kofam 比值高
         if evalue < 1e-10 and ratio > 1.5:
             return "high_conf", {
+                "annotation_summary": fallback_summary,
                 "eggnog_reliability": {"score": 95, "level": "High", "reasons": [f"e-value={evalue:.0e} 极显著", "Kofam ratio={ratio:.2f}x 高可信"]},
                 "kofam_reliability": {"score": 95, "level": "High", "reasons": [f"score/threshold={ratio:.2f}x > 1.5"]},
                 "cross_tool_consistency": "Consistent" if kofam_ko and eggnog_ko == kofam_ko else ("Inconsistent" if kofam_ko and eggnog_ko else "Unknown"),
@@ -143,6 +149,7 @@ class AICurator:
         # 明显低质量：e-value 差 或 Kofam 比值极低
         if evalue > 1e-3 or ratio < 0.5:
             return "low_qual", {
+                "annotation_summary": fallback_summary,
                 "eggnog_reliability": {"score": 20, "level": "Low", "reasons": [f"e-value={evalue:.0e}"] if evalue > 1e-3 else ["e-value 可接受但 Kofam 极弱"]},
                 "kofam_reliability": {"score": max(10, int(ratio*50)), "level": "Low", "reasons": [f"score/threshold={ratio:.2f}x < 0.5"]},
                 "cross_tool_consistency": "Unknown",
@@ -256,6 +263,7 @@ KofamScan 的 score/threshold 比值是核心可信度指标，但不同 KO 的�
   "protein_id": "{protein_id}",
   "eggnog_kegg_ko": "{str(kegg_ko).replace('ko:', '').strip() if kegg_ko else ''}",
   "kofam_ko": "{str(ko_id).replace('ko:', '').strip() if ko_id else ''}",
+  "annotation_summary": "该蛋白预测为...（50字以内的功能总结，基于eggNOG描述和Kofam KO定义）",
   "eggnog_reliability": {{
     "score": 85,
     "level": "High",
@@ -350,6 +358,12 @@ KofamScan 的 score/threshold 比值是核心可信度指标，但不同 KO 的�
                     else:
                         result['_tokens'] = None
 
+                    # 如果 AI 没有返回 annotation_summary，fallback 到原始描述拼接
+                    if not result.get("annotation_summary"):
+                        egg_desc = str(prot.get('eggnog', {}).get('description', '') or '').strip()
+                        kof_def = str(prot.get('kofam', {}).get('definition', prot.get('kofam', {}).get('Description', '')) or '').strip() if prot.get('kofam') else ''
+                        result['annotation_summary'] = " | ".join([d for d in (egg_desc, kof_def) if d]) or "No functional description available"
+
                     egg_level = result.get("eggnog_reliability", {}).get("level", "N/A")
                     kof_level = result.get("kofam_reliability", {}).get("level", "N/A")
                     action = result.get("recommended_action", "N/A")
@@ -373,8 +387,12 @@ KofamScan 的 score/threshold 比值是核心可信度指标，但不同 KO 的�
                     logger.warning(
                         f"[AI {current_ai_idx}/{total_to_evaluate}] {protein_id} 评估失败: {e}"
                     )
+                    egg_desc = str(prot.get('eggnog', {}).get('description', '') or '').strip()
+                    kof_def = str(prot.get('kofam', {}).get('definition', prot.get('kofam', {}).get('Description', '')) or '').strip() if prot.get('kofam') else ''
+                    fallback_summary = " | ".join([d for d in (egg_desc, kof_def) if d]) or "No functional description available"
                     result = {
                         "protein_id": protein_id,
+                        "annotation_summary": fallback_summary,
                         "eggnog_reliability": {"score": 0, "level": "Unknown", "reasons": [f"AI 调用失败: {e}"]},
                         "kofam_reliability": {"score": 0, "level": "Unknown", "reasons": []},
                         "cross_tool_consistency": "Unknown",
@@ -484,6 +502,7 @@ KofamScan 的 score/threshold 比值是核心可信度指标，但不同 KO 的�
             "protein_id": protein_id,
             "error": "parse_failed",
             "raw_response": raw[:800],
+            "annotation_summary": "AI 解析失败，无功能总结",
             "eggnog_reliability": {"score": 0, "level": "Unknown", "reasons": ["JSON 解析失败"]},
             "kofam_reliability": {"score": 0, "level": "Unknown", "reasons": []},
             "cross_tool_consistency": "Unknown",
@@ -594,6 +613,7 @@ def flatten_ai_results(results: List[Dict]) -> pd.DataFrame:
             "protein_id": r.get("protein_id", ""),
             "eggnog_kegg_ko": r.get("eggnog_kegg_ko", ""),
             "kofam_ko": r.get("kofam_ko", ""),
+            "annotation_summary": r.get("annotation_summary", ""),
             "overall_confidence": r.get("overall_confidence", ""),
             "cross_tool_consistency": r.get("cross_tool_consistency", ""),
             "species_plausibility": r.get("species_plausibility", ""),
